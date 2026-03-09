@@ -1,0 +1,153 @@
+# Test 1: Privileged container - should be denied by K8sNoPrivilegedContainers
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-privileged
+  namespace: applications
+  labels:
+    app: test-privileged
+    team: testing
+    environment: dev
+spec:
+  containers:
+    - name: test-privileged
+      image: docker.io/library/nginx:1.27
+      securityContext:
+        privileged: true
+        readOnlyRootFilesystem: true
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi
+        requests:
+          cpu: 50m
+          memory: 32Mi
+---
+# Test 2: Untrusted registry - should be denied by K8sTrustedRegistries
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-untrusted-registry
+  namespace: applications
+  labels:
+    app: test-untrusted-registry
+    team: testing
+    environment: dev
+spec:
+  containers:
+    - name: test-untrusted-registry
+      image: malicious-registry.io/evil:v1
+      securityContext:
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi
+        requests:
+          cpu: 50m
+          memory: 32Mi
+---
+# Test 3: No resource limits - should be denied by K8sRequiredResourceLimits
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-no-resource-limits
+  namespace: applications
+  labels:
+    app: test-no-resource-limits
+    team: testing
+    environment: dev
+spec:
+  containers:
+    - name: test-no-resource-limits
+      image: docker.io/library/nginx:1.27
+      securityContext:
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+---
+# Test 4: Missing required labels - should be denied by K8sRequiredLabels
+# Note: This is a Deployment because the required-labels constraint targets Deployments
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-no-labels
+  namespace: applications
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-no-labels
+  template:
+    metadata:
+      labels:
+        app: test-no-labels
+    spec:
+      containers:
+        - name: test-no-labels
+          image: docker.io/library/nginx:1.27
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 50m
+              memory: 32Mi
+---
+# Test 5: Latest tag - should be denied by K8sNoLatestTag
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-latest-tag
+  namespace: applications
+  labels:
+    app: test-latest-tag
+    team: testing
+    environment: dev
+spec:
+  containers:
+    - name: test-latest-tag
+      image: docker.io/library/nginx:latest
+      securityContext:
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi
+        requests:
+          cpu: 50m
+          memory: 32Mi
+---
+# Test 6: Writable root filesystem - should be denied by K8sReadOnlyRootFilesystem
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-writable-root
+  namespace: applications
+  labels:
+    app: test-writable-root
+    team: testing
+    environment: dev
+spec:
+  containers:
+    - name: test-writable-root
+      image: docker.io/library/nginx:1.27
+      securityContext:
+        readOnlyRootFilesystem: false
+        runAsNonRoot: true
+        runAsUser: 1000
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi
+        requests:
+          cpu: 50m
+          memory: 32Mi

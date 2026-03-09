@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: wazuh-agent
+  namespace: wazuh-agents
+  labels:
+    app: wazuh-agent
+spec:
+  selector:
+    matchLabels:
+      app: wazuh-agent
+  template:
+    metadata:
+      labels:
+        app: wazuh-agent
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+      containers:
+        - name: wazuh-agent
+          image: docker.io/wazuh/wazuh-agent:4.9.2
+          env:
+            - name: WAZUH_MANAGER
+              valueFrom:
+                configMapKeyRef:
+                  name: wazuh-agent-config
+                  key: WAZUH_MANAGER_IP
+            - name: WAZUH_REGISTRATION_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: wazuh-agent-config
+                  key: WAZUH_MANAGER_IP
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 200m
+            requests:
+              memory: 128Mi
+              cpu: 100m
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: wazuh-data
+              mountPath: /var/ossec/data
+            - name: host-var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: host-os-release
+              mountPath: /etc/os-release
+              readOnly: true
+      volumes:
+        - name: wazuh-data
+          emptyDir: {}
+        - name: host-var-log
+          hostPath:
+            path: /var/log
+            type: Directory
+        - name: host-os-release
+          hostPath:
+            path: /etc/os-release
+            type: File

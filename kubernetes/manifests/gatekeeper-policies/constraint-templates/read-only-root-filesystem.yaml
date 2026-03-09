@@ -1,0 +1,27 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sreadonlyrootfilesystem
+  annotations:
+    description: "Denies containers that do not have a read-only root filesystem."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sReadOnlyRootFilesystem
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sreadonlyrootfilesystem
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem == true
+          msg := sprintf("Container '%v' does not have a read-only root filesystem. Set securityContext.readOnlyRootFilesystem to true.", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not container.securityContext.readOnlyRootFilesystem == true
+          msg := sprintf("Init container '%v' does not have a read-only root filesystem. Set securityContext.readOnlyRootFilesystem to true.", [container.name])
+        }

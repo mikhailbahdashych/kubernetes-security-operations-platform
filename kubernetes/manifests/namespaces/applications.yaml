@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: applications
+  labels:
+    name: applications
+    purpose: demo-applications
+    pod-security.kubernetes.io/enforce: restricted

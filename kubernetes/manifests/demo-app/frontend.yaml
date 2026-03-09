@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-frontend
+  namespace: applications
+  labels:
+    app: demo-app-frontend
+    team: demo
+    environment: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-frontend
+  template:
+    metadata:
+      labels:
+        app: demo-app-frontend
+        team: demo
+        environment: dev
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: frontend
+          image: docker.io/library/nginx:1.27
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          resources:
+            limits:
+              memory: 128Mi
+              cpu: 250m
+            requests:
+              memory: 64Mi
+              cpu: 100m
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: run
+              mountPath: /var/run
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        - name: cache
+          emptyDir:
+            medium: Memory
+        - name: run
+          emptyDir:
+            medium: Memory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-frontend
+  namespace: applications
+  labels:
+    app: demo-app-frontend
+    team: demo
+    environment: dev
+spec:
+  type: ClusterIP
+  selector:
+    app: demo-app-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
