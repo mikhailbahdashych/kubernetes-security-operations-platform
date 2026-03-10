@@ -1,0 +1,64 @@
+name: Trivy Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  config-scan:
+    name: Configuration Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan for misconfigurations
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "misconfig"
+          format: "table"
+          exit-code: "1"
+          severity: "HIGH,CRITICAL"
+
+  iac-scan:
+    name: IaC Scan (Terraform)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy IaC scan on Terraform
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "config"
+          scan-ref: "terraform/"
+          format: "table"
+          exit-code: "1"
+          severity: "HIGH,CRITICAL"
+          trivyignores: ".trivyignore"
+
+      - name: Run Trivy IaC scan (SARIF output)
+        uses: aquasecurity/trivy-action@0.28.0
+        if: always()
+        with:
+          scan-type: "config"
+          scan-ref: "terraform/"
+          format: "sarif"
+          output: "trivy-iac-results.sarif"
+          severity: "HIGH,CRITICAL"
+
+      - name: Upload SARIF results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-iac-results.sarif"

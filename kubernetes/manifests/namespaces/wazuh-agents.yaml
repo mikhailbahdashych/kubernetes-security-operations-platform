@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wazuh-agents
+  labels:
+    name: wazuh-agents
+    purpose: host-intrusion-detection
+    pod-security.kubernetes.io/enforce: privileged

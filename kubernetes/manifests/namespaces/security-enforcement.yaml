@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-enforcement
+  labels:
+    name: security-enforcement
+    purpose: policy-enforcement
+    pod-security.kubernetes.io/enforce: baseline

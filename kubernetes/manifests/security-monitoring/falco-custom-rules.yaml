@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-custom-rules
+  namespace: security-monitoring
+  labels:
+    app: falco
+data:
+  custom-rules.yaml: |
+    - rule: Terminal Shell in Container
+      desc: >
+        Detect a shell (bash, sh, zsh) spawned inside a container.
+        This may indicate interactive access or a container escape attempt.
+      condition: >
+        spawned_process
+        and container
+        and proc.name in (bash, sh, zsh)
+      output: >
+        Shell spawned in container
+        (user=%user.name user_loginuid=%user.loginuid container_id=%container.id
+        container_name=%container.name image=%container.image.repository
+        shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline
+        terminal=%proc.tty pid=%proc.pid %container.info)
+      priority: WARNING
+      tags:
+        - container
+        - shell
+        - mitre_execution
+
+    - rule: Sensitive File Access
+      desc: >
+        Detect when a process inside a container reads sensitive files
+        such as /etc/shadow or /etc/passwd.
+      condition: >
+        open_read
+        and container
+        and (fd.name = /etc/shadow or fd.name = /etc/passwd)
+      output: >
+        Sensitive file accessed in container
+        (user=%user.name file=%fd.name container_id=%container.id
+        container_name=%container.name image=%container.image.repository
+        command=%proc.cmdline pid=%proc.pid %container.info)
+      priority: WARNING
+      tags:
+        - container
+        - filesystem
+        - mitre_credential_access
+
+    - rule: Unexpected Outbound Connection
+      desc: >
+        Detect outbound network connections from containers to
+        non-RFC1918 (non-private) IP addresses.
+      condition: >
+        outbound
+        and container
+        and fd.typechar = 4
+        and not (fd.sip.name in (rfc_1918_addresses))
+        and not fd.sip = "0.0.0.0"
+        and not fd.sip = ""
+      output: >
+        Unexpected outbound connection from container
+        (user=%user.name command=%proc.cmdline connection=%fd.name
+        container_id=%container.id container_name=%container.name
+        image=%container.image.repository %container.info)
+      priority: WARNING
+      tags:
+        - container
+        - network
+        - mitre_exfiltration
+
+    - rule: Privilege Escalation Attempt
+      desc: >
+        Detect setuid or setgid system calls inside containers,
+        which may indicate a privilege escalation attempt.
+      condition: >
+        container
+        and (evt.type = setuid or evt.type = setgid)
+        and evt.dir = <
+        and evt.rawres = 0
+      output: >
+        Privilege escalation detected in container via %evt.type
+        (user=%user.name user_loginuid=%user.loginuid command=%proc.cmdline
+        uid=%evt.arg.uid container_id=%container.id
+        container_name=%container.name image=%container.image.repository
+        %container.info)
+      priority: CRITICAL
+      tags:
+        - container
+        - privilege_escalation
+        - mitre_privilege_escalation

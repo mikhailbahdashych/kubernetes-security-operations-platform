@@ -1,0 +1,107 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-admin-binding
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin-role
+subjects:
+  - kind: Group
+    name: cluster-admins
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: security-operator-binding
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: security-operator-role
+subjects:
+  - kind: Group
+    name: security-operators
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: security-operator
+    namespace: security-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: security-operator-manage-binding
+  namespace: security-monitoring
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: security-operator-manage-role
+subjects:
+  - kind: Group
+    name: security-operators
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: security-operator
+    namespace: security-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: security-operator-manage-binding
+  namespace: security-enforcement
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: security-operator-manage-role
+subjects:
+  - kind: Group
+    name: security-operators
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: security-operator
+    namespace: security-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-operator-binding
+  namespace: applications
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: app-operator-role
+subjects:
+  - kind: Group
+    name: app-operators
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: app-operator
+    namespace: applications
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: auditor-binding
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: auditor-role
+subjects:
+  - kind: Group
+    name: auditors
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: auditor
+    namespace: default

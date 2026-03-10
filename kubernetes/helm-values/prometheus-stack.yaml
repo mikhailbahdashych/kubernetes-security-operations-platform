@@ -1,0 +1,112 @@
+## Values for kube-prometheus-stack Helm chart
+## Install: helm install prometheus-stack prometheus-community/kube-prometheus-stack -n security-monitoring -f prometheus-stack.yaml
+
+# Grafana configuration
+grafana:
+  enabled: true
+  adminPassword: admin
+  persistence:
+    enabled: false
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+      label: grafana_dashboard
+      labelValue: "1"
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: true
+      searchNamespace: ALL
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 300m
+    requests:
+      memory: 256Mi
+      cpu: 100m
+  service:
+    type: ClusterIP
+    port: 3000
+
+# Prometheus configuration
+prometheus:
+  prometheusSpec:
+    retention: 24h
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    resources:
+      limits:
+        memory: 1Gi
+        cpu: 500m
+      requests:
+        memory: 512Mi
+        cpu: 250m
+    storageSpec: {}
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+# AlertManager configuration
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 100m
+      requests:
+        memory: 128Mi
+        cpu: 50m
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: "null"
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
+    receivers:
+      - name: "null"
+
+# Node Exporter
+nodeExporter:
+  enabled: true
+
+prometheus-node-exporter:
+  resources:
+    limits:
+      memory: 128Mi
+      cpu: 100m
+    requests:
+      memory: 64Mi
+      cpu: 50m
+
+# Kube State Metrics
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 100m
+    requests:
+      memory: 128Mi
+      cpu: 50m
+
+# Disable components not needed in dev/EKS
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false

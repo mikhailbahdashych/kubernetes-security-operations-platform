@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-agent-config
+  namespace: wazuh-agents
+  labels:
+    app: wazuh-agent
+data:
+  WAZUH_MANAGER_IP: "REPLACE_WITH_WAZUH_SERVER_IP"

@@ -1,0 +1,41 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8strustedregistries
+  annotations:
+    description: "Denies containers with images from untrusted registries."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sTrustedRegistries
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            repos:
+              type: array
+              items:
+                type: string
+              description: "List of trusted container image registry prefixes."
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8strustedregistries
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not image_from_trusted_repo(container.image)
+          msg := sprintf("Container '%v' uses an untrusted image '%v'. Allowed registries are: %v", [container.name, container.image, input.parameters.repos])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not image_from_trusted_repo(container.image)
+          msg := sprintf("Init container '%v' uses an untrusted image '%v'. Allowed registries are: %v", [container.name, container.image, input.parameters.repos])
+        }
+
+        image_from_trusted_repo(image) {
+          repo := input.parameters.repos[_]
+          startswith(image, repo)
+        }

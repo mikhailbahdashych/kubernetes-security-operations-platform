@@ -1,0 +1,36 @@
+## Values for OPA Gatekeeper Helm chart
+## Install: helm install gatekeeper gatekeeper/gatekeeper -n security-enforcement -f gatekeeper.yaml
+
+replicas: 2
+
+auditInterval: 60
+constraintViolationsLimit: 100
+auditFromCache: false
+emitAuditEvents: true
+emitAdmissionEvents: false
+
+exemptNamespaces:
+  - kube-system
+  - gatekeeper-system
+
+controllerManager:
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 200m
+    requests:
+      memory: 256Mi
+      cpu: 100m
+
+audit:
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 100m
+    requests:
+      memory: 128Mi
+      cpu: 50m
+
+pdb:
+  controllerManager:
+    minAvailable: 1

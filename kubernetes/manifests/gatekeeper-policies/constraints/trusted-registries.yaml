@@ -1,0 +1,20 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sTrustedRegistries
+metadata:
+  name: trusted-registries
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+      - gatekeeper-system
+  parameters:
+    repos:
+      - "docker.io/library/"
+      - "public.ecr.aws/"
+      - "registry.k8s.io/"
+      - "quay.io/"
+      - "ghcr.io/"

@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-nginx-config
+  namespace: applications
+  labels:
+    app: demo-app-backend
+    team: demo
+    environment: dev
+data:
+  default.conf: |
+    server {
+        listen 8080;
+        server_name localhost;
+
+        location / {
+            return 200 '{"status": "ok", "service": "demo-app-backend"}';
+            add_header Content-Type application/json;
+        }
+
+        location /health {
+            return 200 '{"status": "healthy"}';
+            add_header Content-Type application/json;
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-backend
+  namespace: applications
+  labels:
+    app: demo-app-backend
+    team: demo
+    environment: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-backend
+  template:
+    metadata:
+      labels:
+        app: demo-app-backend
+        team: demo
+        environment: dev
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: backend
+          image: docker.io/library/nginx:1.27-alpine
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            limits:
+              memory: 128Mi
+              cpu: 250m
+            requests:
+              memory: 64Mi
+              cpu: 100m
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: run
+              mountPath: /var/run
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        - name: cache
+          emptyDir:
+            medium: Memory
+        - name: run
+          emptyDir:
+            medium: Memory
+        - name: nginx-config
+          configMap:
+            name: backend-nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-backend
+  namespace: applications
+  labels:
+    app: demo-app-backend
+    team: demo
+    environment: dev
+spec:
+  type: ClusterIP
+  selector:
+    app: demo-app-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
