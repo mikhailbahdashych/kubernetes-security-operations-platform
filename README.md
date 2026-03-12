@@ -195,7 +195,3 @@ Tear down when not studying to reduce costs to ~$0.
 - [Threat Model](docs/threat-model.md)
 - [Deploy & Teardown Runbook](docs/runbook.md)
 - [Cost Analysis](docs/cost-analysis.md)
-
-## License
-
-MIT
