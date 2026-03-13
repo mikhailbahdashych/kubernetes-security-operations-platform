@@ -39,6 +39,11 @@ RESULTS=()
 
 # check_allowed <description> <kubectl auth can-i args...>
 # Expects the action to be ALLOWED (yes).
+#
+# Uses `kubectl auth can-i` which queries the API server's authorization
+# system. The --as and --as-group flags perform impersonation to test
+# permissions as a specific user/group without actually authenticating as them.
+# This requires the caller to have impersonation privileges (cluster-admin).
 check_allowed() {
     local desc="$1"; shift
     (( TOTAL++ ))
@@ -58,6 +63,9 @@ check_allowed() {
 
 # check_denied <description> <kubectl auth can-i args...>
 # Expects the action to be DENIED (no).
+#
+# Verifying denials is equally important as verifying grants — it confirms
+# that the principle of least privilege is correctly enforced.
 check_denied() {
     local desc="$1"; shift
     (( TOTAL++ ))
@@ -104,12 +112,18 @@ test_cluster_admin() {
 test_security_operator() {
     echo ""
     info "===== Tier 2: Security Operator (SA: security-monitoring/security-operator) ====="
+    # The security operator has two permission sources:
+    #   1. ClusterRole: security-operator-role (read-only, no secrets)
+    #   2. Role: security-operator-manage-role (CRUD in security namespaces)
+    # Tests verify both the grants and the boundaries.
 
     local sa="--as=system:serviceaccount:security-monitoring:security-operator"
 
+    # Granted by ClusterRole (cluster-wide read)
     check_allowed "CAN get pods in all namespaces" \
         get pods $sa --all-namespaces
 
+    # Granted by namespace Role (CRUD in security-monitoring)
     check_allowed "CAN create deployments in security-monitoring" \
         create deployments $sa -n security-monitoring
 
@@ -119,15 +133,18 @@ test_security_operator() {
     check_allowed "CAN list events in security-monitoring" \
         list events $sa -n security-monitoring
 
+    # DENIED: no write permissions outside security namespaces
     check_denied "CANNOT delete deployments in applications" \
         delete deployments $sa -n applications
 
+    # DENIED: cannot modify cluster-level RBAC
     check_denied "CANNOT create clusterroles" \
         create clusterroles $sa
 
     check_denied "CANNOT delete namespaces" \
         delete namespaces $sa
 
+    # DENIED: secrets are excluded from the cluster-wide read ClusterRole
     check_denied "CANNOT access secrets in kube-system" \
         get secrets $sa -n kube-system
 }

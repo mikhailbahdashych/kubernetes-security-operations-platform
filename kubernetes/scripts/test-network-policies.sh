@@ -26,11 +26,14 @@ error()   { echo -e "${RED}[ERROR]${NC} $*"; }
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+# Namespaces to test network isolation between
 APP_NS="applications"
 SEC_NS="security-monitoring"
 TEST_POD_FRONTEND="netpol-test-frontend"
 TEST_POD_BACKEND="netpol-test-backend"
+# netshoot is a network troubleshooting image with curl, nslookup, etc.
 TEST_IMAGE="nicolaka/netshoot:latest"
+# 5-second timeout — if a connection attempt takes longer, it's blocked
 CONNECT_TIMEOUT=5
 
 TOTAL=0
@@ -83,7 +86,10 @@ wait_for_pod() {
 create_test_pods() {
     info "Creating test pods..."
 
-    # Frontend pod in applications namespace (simulates a frontend workload)
+    # Frontend pod in applications namespace (simulates a frontend workload).
+    # The --overrides JSON is needed to satisfy PSS "restricted" requirements
+    # in the applications namespace (runAsNonRoot, seccompProfile, drop ALL caps).
+    # Without these overrides, the pod would be rejected by the PodSecurity admission.
     kubectl run "$TEST_POD_FRONTEND" \
         --namespace "$APP_NS" \
         --image "$TEST_IMAGE" \
@@ -93,7 +99,7 @@ create_test_pods() {
         --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":1000,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"netpol-test-frontend","image":"nicolaka/netshoot:latest","command":["sleep","3600"],"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \
         2>/dev/null || info "Frontend test pod already exists"
 
-    # Backend pod in applications namespace (simulates a backend workload)
+    # Backend pod — same security context overrides as the frontend
     kubectl run "$TEST_POD_BACKEND" \
         --namespace "$APP_NS" \
         --image "$TEST_IMAGE" \
@@ -122,6 +128,10 @@ cleanup_test_pods() {
 
 test_frontend_to_backend() {
     info "Test 1: Frontend -> Backend connectivity on port 8080"
+    # This test validates the allow-frontend-egress-to-backend and
+    # allow-backend-ingress-from-frontend network policies. The test pods
+    # do not actually run nginx on 8080, so we verify the network PATH
+    # is open (connection refused = path open, timeout = path blocked).
 
     local backend_ip
     backend_ip=$(kubectl get pod "$TEST_POD_BACKEND" -n "$APP_NS" -o jsonpath='{.status.podIP}')
@@ -136,9 +146,10 @@ test_frontend_to_backend() {
         curl -s -o /dev/null -w "%{http_code}" --connect-timeout "$CONNECT_TIMEOUT" \
         "http://${backend_ip}:8080" 2>&1 || true)
 
-    # We expect either a connection success (any HTTP code) or a connection
-    # refused (port not listening). Both prove the network path is open.
-    # A timeout or "network unreachable" means the policy blocked it.
+    # "Connection refused" = network path is open but no server is listening
+    # (expected, since test pods run sleep, not nginx).
+    # Any HTTP status code = server responded = path is definitely open.
+    # "timed out" or "unreachable" = network policy is blocking traffic.
     if echo "$result" | grep -qiE "Connection refused|^[0-9]{3}$"; then
         pass_test "Frontend -> Backend on port 8080 (network path open)"
     elif echo "$result" | grep -qi "timed out\|unreachable"; then
@@ -151,6 +162,9 @@ test_frontend_to_backend() {
 
 test_frontend_to_security_monitoring_blocked() {
     info "Test 2: Frontend -> security-monitoring (should be BLOCKED)"
+    # This test validates cross-namespace isolation. The default-deny policy
+    # in security-monitoring blocks all ingress, and there is no policy
+    # allowing traffic from the applications namespace.
 
     # Try to reach any pod in security-monitoring namespace
     # First, find a pod IP in security-monitoring (if any pods exist)
@@ -192,6 +206,8 @@ test_frontend_to_security_monitoring_blocked() {
 
 test_dns_resolution() {
     info "Test 3: DNS resolution from applications namespace"
+    # Validates the allow-dns network policy — without it, DNS resolution
+    # would be blocked by default-deny and all service discovery would fail.
 
     local result
     result=$(kubectl exec "$TEST_POD_FRONTEND" -n "$APP_NS" -- \
@@ -206,6 +222,9 @@ test_dns_resolution() {
 
 test_cross_namespace_blocked() {
     info "Test 4: Cross-namespace traffic to security-monitoring (additional check)"
+    # Unlike Test 2 which uses pod IPs, this test attempts to reach
+    # Prometheus by its service DNS name. This verifies that even with
+    # working DNS (from Test 3), the actual data plane traffic is blocked.
 
     # Try reaching the Prometheus service by DNS name (should be blocked by network policy)
     local result

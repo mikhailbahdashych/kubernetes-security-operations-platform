@@ -1,3 +1,18 @@
+# =============================================================================
+# CI Workflow: Kubernetes Manifests Lint
+#
+# Validates Kubernetes YAML manifests for correctness and style.
+# Runs on pushes and PRs to main that change kubernetes/ files.
+#
+# Jobs:
+#   1. kubeconform — validates manifests against Kubernetes API schemas.
+#      Catches issues like wrong apiVersion, missing required fields, or
+#      invalid field values BEFORE they reach the cluster.
+#   2. yamllint    — checks YAML formatting and style consistency.
+#
+# Why kubeconform over kubeval? kubeconform is actively maintained, faster,
+# supports CRD schemas, and handles multi-document YAML files.
+# =============================================================================
 name: Kubernetes Manifests Lint
 
 on:
@@ -10,10 +25,17 @@ on:
     paths:
       - "kubernetes/**"
 
+# Minimal permissions — only needs to read repository contents
 permissions:
   contents: read
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Kubeconform — Kubernetes schema validation
+  # Validates that manifests are valid against the K8s v1.29 API schema.
+  # --strict rejects unknown fields, --ignore-missing-schemas allows CRDs
+  # (like Gatekeeper ConstraintTemplates) whose schemas are not available.
+  # ---------------------------------------------------------------------------
   kubeconform:
     name: Kubeconform Validation
     runs-on: ubuntu-latest
@@ -39,6 +61,13 @@ jobs:
               -summary \
               -output text
 
+  # ---------------------------------------------------------------------------
+  # Job 2: YAML Lint — style and formatting check
+  # Uses a custom config that relaxes some defaults:
+  #   - line-length: 200 chars (Kubernetes manifests can be verbose)
+  #   - document-start: disabled (not all YAML files need "---" at the top)
+  #   - indent-sequences: whatever (allows both indented and non-indented lists)
+  # ---------------------------------------------------------------------------
   yamllint:
     name: YAML Lint
     runs-on: ubuntu-latest

@@ -1,6 +1,22 @@
+# =============================================================================
+# Dev Environment — Root Module
+#
+# Orchestrates the three infrastructure modules (VPC, EKS, Wazuh) for the
+# development environment. This is the entry point for `terraform apply`.
+#
+# Deployment order (handled automatically by Terraform dependency graph):
+#   1. VPC  — network foundation
+#   2. EKS  — Kubernetes cluster in private subnets
+#   3. Wazuh — optional HIDS server in a public subnet
+# =============================================================================
+
+# AWS provider configuration with default tags applied to all resources
 provider "aws" {
   region = var.region
 
+  # These tags are automatically applied to every resource created by this
+  # Terraform configuration — ensures consistent tagging for cost tracking
+  # and resource identification
   default_tags {
     tags = {
       Project     = var.project_name
@@ -10,10 +26,15 @@ provider "aws" {
   }
 }
 
+# Cluster name is derived from project + environment to avoid naming conflicts
+# when running multiple environments (e.g., ksop-dev, ksop-staging)
 locals {
   cluster_name = "${var.project_name}-${var.environment}"
 }
 
+# -----------------------------------------------------------------------------
+# VPC — Network foundation with public/private subnets across 2 AZs
+# -----------------------------------------------------------------------------
 module "vpc" {
   source = "../../modules/vpc"
 
@@ -22,6 +43,10 @@ module "vpc" {
   vpc_cidr     = "10.0.0.0/16"
 }
 
+# -----------------------------------------------------------------------------
+# EKS — Security-hardened Kubernetes cluster with spot nodes
+# Depends on: VPC (needs vpc_id and private_subnet_ids)
+# -----------------------------------------------------------------------------
 module "eks" {
   source = "../../modules/eks"
 
@@ -36,6 +61,11 @@ module "eks" {
   node_max_size      = var.node_max_size
 }
 
+# -----------------------------------------------------------------------------
+# Wazuh Server — Optional HIDS on EC2 (opt-in via deploy_wazuh variable)
+# Depends on: VPC (needs vpc_id and public_subnet_id)
+# Set deploy_wazuh = true in terraform.tfvars to enable
+# -----------------------------------------------------------------------------
 module "wazuh" {
   source = "../../modules/wazuh-server"
   count  = var.deploy_wazuh ? 1 : 0

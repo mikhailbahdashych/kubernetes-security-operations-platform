@@ -1,3 +1,17 @@
+# =============================================================================
+# Gatekeeper Constraint Template: K8sNoLatestTag
+#
+# Prevents deployment of containers that use the ":latest" tag or have no
+# tag at all. The ":latest" tag is mutable — it can point to different images
+# over time, making deployments non-reproducible and complicating rollbacks.
+#
+# Rego logic:
+#   - Checks both containers[] and initContainers[]
+#   - Rejects images ending in ":latest"
+#   - Rejects images with no ":" (implicitly :latest)
+#
+# Corresponding constraint: constraints/no-latest-tag.yaml
+# =============================================================================
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -14,18 +28,21 @@ spec:
       rego: |
         package k8snolatesttag
 
+        # Reject containers with explicit ":latest" tag
         violation[{"msg": msg}] {
           container := input.review.object.spec.containers[_]
           endswith(container.image, ":latest")
           msg := sprintf("Container '%v' uses the ':latest' tag in image '%v', which is not allowed.", [container.name, container.image])
         }
 
+        # Reject containers with no tag (no ":" in image name)
         violation[{"msg": msg}] {
           container := input.review.object.spec.containers[_]
           not contains(container.image, ":")
           msg := sprintf("Container '%v' uses image '%v' without a tag, which is not allowed. Please specify an explicit tag.", [container.name, container.image])
         }
 
+        # Same checks for init containers
         violation[{"msg": msg}] {
           container := input.review.object.spec.initContainers[_]
           endswith(container.image, ":latest")

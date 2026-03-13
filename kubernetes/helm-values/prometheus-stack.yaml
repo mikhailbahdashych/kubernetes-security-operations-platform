@@ -1,17 +1,39 @@
-## Values for kube-prometheus-stack Helm chart
-## Install: helm install prometheus-stack prometheus-community/kube-prometheus-stack -n security-monitoring -f prometheus-stack.yaml
+# =============================================================================
+# Helm Values: kube-prometheus-stack
+#
+# Chart: prometheus-community/kube-prometheus-stack
+# Install command:
+#   helm install prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n security-monitoring -f prometheus-stack.yaml
+#
+# This chart deploys the full monitoring stack:
+#   - Prometheus (metrics collection and storage)
+#   - Grafana (dashboards and visualization)
+#   - AlertManager (alert routing — configured with null receiver for dev)
+#   - Node Exporter (host-level metrics from each node)
+#   - Kube State Metrics (Kubernetes object state metrics)
+#
+# All resource limits are tuned for a 2-node t3.medium dev cluster.
+# =============================================================================
 
-# Grafana configuration
+# ---------------------------------------------------------------------------
+# Grafana — dashboard UI for visualizing security metrics
+# ---------------------------------------------------------------------------
 grafana:
   enabled: true
+  # Default admin password for dev — change in production via a Secret
   adminPassword: admin
+  # No persistent storage — dashboards are provisioned from ConfigMaps
+  # (see security-monitoring/grafana-dashboards.yaml)
   persistence:
     enabled: false
+  # Sidecar automatically discovers and loads dashboards/datasources
+  # from ConfigMaps across all namespaces
   sidecar:
     dashboards:
       enabled: true
-      searchNamespace: ALL
-      label: grafana_dashboard
+      searchNamespace: ALL           # Search all namespaces for dashboard ConfigMaps
+      label: grafana_dashboard       # Only load ConfigMaps with this label
       labelValue: "1"
       folderAnnotation: grafana_folder
       provider:
@@ -19,6 +41,7 @@ grafana:
     datasources:
       enabled: true
       searchNamespace: ALL
+  # Resource limits sized for dev — Grafana is lightweight
   resources:
     limits:
       memory: 512Mi
@@ -27,15 +50,21 @@ grafana:
       memory: 256Mi
       cpu: 100m
   service:
-    type: ClusterIP
+    type: ClusterIP                  # Access via kubectl port-forward
     port: 3000
 
-# Prometheus configuration
+# ---------------------------------------------------------------------------
+# Prometheus — metrics collection engine
+# ---------------------------------------------------------------------------
 prometheus:
   prometheusSpec:
+    # 24h retention — keeps costs low on dev clusters (no PV needed)
+    # Increase for production to 7d+ with persistent storage
     retention: 24h
+    # 30s scrape interval — balanced between granularity and resource usage
     scrapeInterval: 30s
     evaluationInterval: 30s
+    # Resource limits for a 2-node dev cluster
     resources:
       limits:
         memory: 1Gi
@@ -43,12 +72,18 @@ prometheus:
       requests:
         memory: 512Mi
         cpu: 250m
+    # No persistent storage — data is ephemeral (acceptable for dev)
     storageSpec: {}
+    # These three settings ensure Prometheus discovers ServiceMonitors,
+    # PodMonitors, and PrometheusRules from ALL namespaces, not just the
+    # ones deployed by the Helm chart
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
     ruleSelectorNilUsesHelmValues: false
 
-# AlertManager configuration
+# ---------------------------------------------------------------------------
+# AlertManager — alert routing (null receiver for dev)
+# ---------------------------------------------------------------------------
 alertmanager:
   enabled: true
   alertmanagerSpec:
@@ -67,15 +102,22 @@ alertmanager:
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 4h
+      # "null" receiver — alerts are received but not forwarded anywhere.
+      # In production, configure Slack, PagerDuty, or email receivers.
       receiver: "null"
       routes:
+        # Silence the Watchdog alert — it fires continuously to prove
+        # AlertManager is working (noisy in dev)
         - receiver: "null"
           matchers:
             - alertname = "Watchdog"
     receivers:
       - name: "null"
 
-# Node Exporter
+# ---------------------------------------------------------------------------
+# Node Exporter — collects host-level metrics (CPU, memory, disk, network)
+# Runs as a DaemonSet on every node
+# ---------------------------------------------------------------------------
 nodeExporter:
   enabled: true
 
@@ -88,7 +130,10 @@ prometheus-node-exporter:
       memory: 64Mi
       cpu: 50m
 
-# Kube State Metrics
+# ---------------------------------------------------------------------------
+# Kube State Metrics — exposes Kubernetes object state as Prometheus metrics
+# (pod status, deployment replicas, node conditions, etc.)
+# ---------------------------------------------------------------------------
 kubeStateMetrics:
   enabled: true
 
@@ -101,12 +146,16 @@ kube-state-metrics:
       memory: 128Mi
       cpu: 50m
 
-# Disable components not needed in dev/EKS
+# ---------------------------------------------------------------------------
+# Disabled components — these are not available in EKS (managed control plane)
+# The control plane components run in AWS-managed infrastructure and are not
+# accessible for Prometheus scraping
+# ---------------------------------------------------------------------------
 kubeEtcd:
-  enabled: false
+  enabled: false                     # etcd is managed by AWS
 kubeControllerManager:
-  enabled: false
+  enabled: false                     # Controller manager is managed by AWS
 kubeScheduler:
-  enabled: false
+  enabled: false                     # Scheduler is managed by AWS
 kubeProxy:
-  enabled: false
+  enabled: false                     # kube-proxy metrics are handled differently in EKS

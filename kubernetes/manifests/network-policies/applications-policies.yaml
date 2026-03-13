@@ -1,3 +1,28 @@
+# =============================================================================
+# Network Policies: applications namespace
+#
+# Implements a micro-segmentation model for the demo application:
+#
+#   Frontend (nginx:80) <-- ingress from within namespace only
+#        |
+#        +--> egress to Backend (nginx:8080)
+#
+#   Backend (nginx:8080) <-- ingress only from Frontend pods
+#
+#   All pods --> HTTPS/443 to internet (excluding private CIDRs)
+#
+# This ensures:
+#   - Frontend can only talk to Backend (not directly to external services)
+#   - Backend only accepts traffic from Frontend (not from arbitrary pods)
+#   - Cross-namespace traffic is blocked (no access to security-monitoring)
+#   - Internet access is limited to HTTPS only (no HTTP, no arbitrary ports)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Allow inbound traffic to Frontend pods on port 80
+# Only from within the applications namespace (e.g., an ingress controller
+# or port-forward)
+# -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -18,6 +43,10 @@ spec:
         - protocol: TCP
           port: 80
 ---
+# -----------------------------------------------------------------------------
+# Allow inbound traffic to Backend pods on port 8080
+# ONLY from Frontend pods — prevents direct access from other workloads
+# -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -31,6 +60,7 @@ spec:
     - Ingress
   ingress:
     - from:
+        # Only pods with the frontend label can reach the backend
         - podSelector:
             matchLabels:
               app: demo-app-frontend
@@ -38,6 +68,10 @@ spec:
         - protocol: TCP
           port: 8080
 ---
+# -----------------------------------------------------------------------------
+# Allow Frontend pods to send traffic to Backend pods on port 8080
+# This is the egress counterpart of the ingress rule above
+# -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -58,13 +92,19 @@ spec:
         - protocol: TCP
           port: 8080
 ---
+# -----------------------------------------------------------------------------
+# Allow HTTPS egress to the internet (excluding private networks)
+# This lets pods pull images, call external APIs, etc. over HTTPS only.
+# Private CIDRs (10.x, 172.16.x, 192.168.x) are excluded to prevent
+# pods from probing internal infrastructure or other namespaces via IP.
+# -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-egress-https-internet
   namespace: applications
 spec:
-  podSelector: {}
+  podSelector: {}   # Applies to all pods in the namespace
   policyTypes:
     - Egress
   egress:
@@ -72,9 +112,9 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except:
-              - 10.0.0.0/8
-              - 172.16.0.0/12
-              - 192.168.0.0/16
+              - 10.0.0.0/8        # VPC and other private networks
+              - 172.16.0.0/12     # Docker bridge networks
+              - 192.168.0.0/16    # Home/office networks
       ports:
         - protocol: TCP
-          port: 443
+          port: 443              # HTTPS only — no HTTP/80

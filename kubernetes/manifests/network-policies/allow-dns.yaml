@@ -1,14 +1,29 @@
+# =============================================================================
+# Network Policy: Allow DNS Resolution
+#
+# Permits all pods in each namespace to reach CoreDNS in kube-system on
+# port 53 (UDP and TCP). Without this policy, pods cannot resolve service
+# names or external hostnames — effectively breaking all network communication.
+#
+# This is a required companion to the default-deny policy because DNS is
+# a prerequisite for virtually all Kubernetes networking.
+#
+# Applied to: applications, security-monitoring, security-enforcement, wazuh-agents
+# =============================================================================
+
+# DNS egress for "applications" namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dns
   namespace: applications
 spec:
-  podSelector: {}
+  podSelector: {}   # Applies to all pods
   policyTypes:
     - Egress
   egress:
     - to:
+        # Target only the kube-system namespace where CoreDNS runs
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
@@ -16,8 +31,9 @@ spec:
         - protocol: UDP
           port: 53
         - protocol: TCP
-          port: 53
+          port: 53       # TCP fallback for responses > 512 bytes
 ---
+# DNS egress for "security-monitoring" namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -38,6 +54,7 @@ spec:
         - protocol: TCP
           port: 53
 ---
+# DNS egress for "security-enforcement" namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -58,6 +75,7 @@ spec:
         - protocol: TCP
           port: 53
 ---
+# DNS egress for "wazuh-agents" namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

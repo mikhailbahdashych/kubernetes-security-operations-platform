@@ -1,3 +1,25 @@
+# =============================================================================
+# Demo Application — Backend (nginx API stub)
+#
+# A security-hardened nginx container serving a JSON API stub on port 8080.
+# Demonstrates how to deploy a compliant workload that satisfies all
+# Gatekeeper policies and PSS "restricted" requirements:
+#
+#   - Runs as non-root (UID 1000)
+#   - Read-only root filesystem (writable dirs via emptyDir tmpfs)
+#   - Drops ALL Linux capabilities
+#   - No privilege escalation allowed
+#   - Resource limits set (CPU + memory)
+#   - Required labels present (app, team, environment)
+#   - Image from trusted registry with explicit tag
+#
+# The backend listens on port 8080 (non-privileged port) and returns
+# static JSON responses. It is only reachable from Frontend pods via
+# the network policy allow-backend-ingress-from-frontend.
+# =============================================================================
+
+# ConfigMap containing the nginx configuration that makes it listen on
+# port 8080 (instead of the default 80) and serve JSON responses
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -24,6 +46,7 @@ data:
         }
     }
 ---
+# Deployment — single replica backend behind a ClusterIP service
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,8 +54,8 @@ metadata:
   namespace: applications
   labels:
     app: demo-app-backend
-    team: demo
-    environment: dev
+    team: demo                    # Required by K8sRequiredLabels constraint
+    environment: dev              # Required by K8sRequiredLabels constraint
 spec:
   replicas: 1
   selector:
@@ -45,16 +68,20 @@ spec:
         team: demo
         environment: dev
     spec:
+      # Pod-level security context — enforces non-root at the pod level
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
-        fsGroup: 1000
+        fsGroup: 1000             # Sets group ownership on mounted volumes
       containers:
         - name: backend
+          # Fully-qualified image name with explicit tag — required by
+          # K8sTrustedRegistries and K8sNoLatestTag Gatekeeper policies
           image: docker.io/library/nginx:1.27-alpine
           ports:
             - containerPort: 8080
               protocol: TCP
+          # Resource limits — required by K8sRequiredResourceLimits constraint
           resources:
             limits:
               memory: 128Mi
@@ -62,25 +89,30 @@ spec:
             requests:
               memory: 64Mi
               cpu: 100m
+          # Container-level security hardening — satisfies PSS "restricted"
           securityContext:
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: true       # Required by K8sReadOnlyRootFilesystem
             runAsNonRoot: true
             runAsUser: 1000
-            allowPrivilegeEscalation: false
+            allowPrivilegeEscalation: false     # Blocks setuid/setgid binaries
             capabilities:
               drop:
-                - ALL
+                - ALL                           # Drop all Linux capabilities
+          # Writable directories needed by nginx (mounted as tmpfs to keep
+          # the root filesystem read-only)
           volumeMounts:
             - name: tmp
               mountPath: /tmp
             - name: cache
-              mountPath: /var/cache/nginx
+              mountPath: /var/cache/nginx       # nginx needs to write cache files
             - name: run
-              mountPath: /var/run
+              mountPath: /var/run               # nginx PID file location
             - name: nginx-config
               mountPath: /etc/nginx/conf.d
               readOnly: true
       volumes:
+        # tmpfs-backed emptyDir volumes — data lives in memory only,
+        # never touches disk, and is cleared when the pod stops
         - name: tmp
           emptyDir:
             medium: Memory
@@ -90,10 +122,12 @@ spec:
         - name: run
           emptyDir:
             medium: Memory
+        # Mount the ConfigMap as a read-only volume for nginx config
         - name: nginx-config
           configMap:
             name: backend-nginx-config
 ---
+# ClusterIP Service — internal-only, reached by Frontend pods
 apiVersion: v1
 kind: Service
 metadata:

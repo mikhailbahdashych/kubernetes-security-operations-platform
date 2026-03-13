@@ -1,3 +1,15 @@
+# =============================================================================
+# Gatekeeper Constraint: required-resource-limits
+#
+# Activates the K8sRequiredResourceLimits template to enforce CPU and memory
+# limits on all Pods in the "applications" namespace. This prevents noisy
+# neighbor problems and ensures predictable resource consumption.
+#
+# Only scoped to "applications" because security tools in other namespaces
+# have their resource limits set via Helm values files.
+#
+# Enforcement: deny — non-compliant Pods are rejected at admission time.
+# =============================================================================
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredResourceLimits
 metadata:

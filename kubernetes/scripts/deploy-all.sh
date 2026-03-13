@@ -41,6 +41,8 @@ K8S_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MANIFESTS_DIR="${K8S_DIR}/manifests"
 HELM_VALUES_DIR="${K8S_DIR}/helm-values"
 
+# Parse CLI arguments — currently only supports --wazuh to enable
+# Wazuh agent deployment (matches the Terraform deploy_wazuh variable)
 DEPLOY_WAZUH=false
 for arg in "$@"; do
     case "$arg" in
@@ -183,7 +185,9 @@ deploy_gatekeeper() {
         return
     fi
 
-    # Wait for the Gatekeeper webhook to be ready
+    # The webhook must exist before we can apply constraint templates.
+    # Without it, kubectl apply will succeed but the templates won't be
+    # enforced by the admission controller.
     info "Waiting for Gatekeeper webhook to become ready..."
     local retries=30
     while (( retries > 0 )); do
@@ -198,7 +202,10 @@ deploy_gatekeeper() {
         warn "Timed out waiting for Gatekeeper webhook; constraint templates may fail to apply"
     fi
 
-    # Apply constraint templates first, then constraints
+    # Constraint templates MUST be applied before constraints because
+    # templates define the CRDs (Custom Resource Definitions) that
+    # constraints reference. Applying constraints first would fail with
+    # "resource type not found" errors.
     local ct_dir="${MANIFESTS_DIR}/gatekeeper-policies/constraint-templates"
     if [[ -d "$ct_dir" ]] && [[ -n "$(ls -A "$ct_dir" 2>/dev/null)" ]]; then
         info "Applying Gatekeeper constraint templates..."
@@ -208,7 +215,8 @@ deploy_gatekeeper() {
             error "Failed to apply constraint templates"
             record_fail "Gatekeeper Constraint Templates"
         fi
-        # Allow the templates time to register CRDs
+        # CRDs take time to register with the API server — constraints
+        # applied too early will fail with "no matches for kind" errors
         info "Waiting 15s for constraint template CRDs to register..."
         sleep 15
     else

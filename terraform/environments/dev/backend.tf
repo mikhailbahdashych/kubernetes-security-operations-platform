@@ -1,3 +1,10 @@
+# =============================================================================
+# Remote State Backend — S3 + DynamoDB (optional)
+#
+# By default, Terraform stores state locally. For team collaboration and
+# state locking, uncomment the backend block after creating the S3 bucket
+# and DynamoDB table using the commands below.
+# =============================================================================
 # Uncomment the backend block below after creating the S3 bucket and DynamoDB table.
 #
 # To create the required backend resources, run:

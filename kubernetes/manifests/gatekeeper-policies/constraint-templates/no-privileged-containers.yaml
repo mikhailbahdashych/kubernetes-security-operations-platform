@@ -1,3 +1,19 @@
+# =============================================================================
+# Gatekeeper Constraint Template: K8sNoPrivilegedContainers
+#
+# Prevents containers from running in privileged mode (securityContext.privileged: true).
+# Privileged containers have full access to the host's devices, kernel modules,
+# and network stack — effectively equivalent to root on the host node. This is
+# the most dangerous security misconfiguration in Kubernetes.
+#
+# Rego logic:
+#   - Checks both containers[] and initContainers[]
+#   - Rejects if securityContext.privileged == true
+#
+# Corresponding constraint: constraints/no-privileged-containers.yaml
+# (excludes security-monitoring and wazuh-agents namespaces where Falco
+# and Wazuh require elevated privileges)
+# =============================================================================
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -14,12 +30,14 @@ spec:
       rego: |
         package k8snoprivilegedcontainers
 
+        # Reject privileged containers
         violation[{"msg": msg}] {
           container := input.review.object.spec.containers[_]
           container.securityContext.privileged == true
           msg := sprintf("Container '%v' is running in privileged mode, which is not allowed.", [container.name])
         }
 
+        # Reject privileged init containers
         violation[{"msg": msg}] {
           container := input.review.object.spec.initContainers[_]
           container.securityContext.privileged == true

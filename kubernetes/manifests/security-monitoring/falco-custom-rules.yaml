@@ -1,3 +1,20 @@
+# =============================================================================
+# Falco Custom Rules — Platform-Specific Runtime Detection
+#
+# Supplements Falco's built-in rules with custom detections tailored to the
+# KSOP platform. These rules are loaded as a ConfigMap and mounted into
+# the Falco pods (also duplicated in the Helm values for consistency).
+#
+# Rules are mapped to MITRE ATT&CK techniques:
+#   - Terminal Shell in Container    -> T1059 (Execution)
+#   - Sensitive File Access          -> T1003 (Credential Access)
+#   - Unexpected Outbound Connection -> T1041 (Exfiltration)
+#   - Privilege Escalation Attempt   -> T1548 (Privilege Escalation)
+#
+# Alert priority levels:
+#   - WARNING  — suspicious but potentially legitimate activity
+#   - CRITICAL — strong indicator of compromise, requires immediate response
+# =============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,6 +24,14 @@ metadata:
     app: falco
 data:
   custom-rules.yaml: |
+    # -----------------------------------------------------------------
+    # Rule: Terminal Shell in Container
+    # MITRE ATT&CK: T1059 - Command and Scripting Interpreter
+    #
+    # Detects interactive shell sessions inside containers, which may
+    # indicate an attacker executing commands after gaining initial access
+    # or a developer bypassing CI/CD (both should be investigated).
+    # -----------------------------------------------------------------
     - rule: Terminal Shell in Container
       desc: >
         Detect a shell (bash, sh, zsh) spawned inside a container.
@@ -27,6 +52,14 @@ data:
         - shell
         - mitre_execution
 
+    # -----------------------------------------------------------------
+    # Rule: Sensitive File Access
+    # MITRE ATT&CK: T1003 - OS Credential Dumping
+    #
+    # Detects reads of /etc/shadow or /etc/passwd inside containers.
+    # Attackers read these files to harvest credentials for lateral
+    # movement or privilege escalation.
+    # -----------------------------------------------------------------
     - rule: Sensitive File Access
       desc: >
         Detect when a process inside a container reads sensitive files
@@ -46,6 +79,14 @@ data:
         - filesystem
         - mitre_credential_access
 
+    # -----------------------------------------------------------------
+    # Rule: Unexpected Outbound Connection
+    # MITRE ATT&CK: T1041 - Exfiltration Over C2 Channel
+    #
+    # Detects outbound network connections to public (non-RFC1918) IPs.
+    # This may indicate data exfiltration, C2 communication, or
+    # cryptomining. fd.typechar=4 filters for IPv4 connections only.
+    # -----------------------------------------------------------------
     - rule: Unexpected Outbound Connection
       desc: >
         Detect outbound network connections from containers to
@@ -68,6 +109,16 @@ data:
         - network
         - mitre_exfiltration
 
+    # -----------------------------------------------------------------
+    # Rule: Privilege Escalation Attempt
+    # MITRE ATT&CK: T1548 - Abuse Elevation Control Mechanism
+    #
+    # Detects successful setuid/setgid syscalls inside containers.
+    # These syscalls change the effective user/group ID of a process,
+    # which is the primary mechanism for privilege escalation in Linux.
+    # Marked CRITICAL because successful setuid in a container is
+    # almost always an indicator of compromise.
+    # -----------------------------------------------------------------
     - rule: Privilege Escalation Attempt
       desc: >
         Detect setuid or setgid system calls inside containers,

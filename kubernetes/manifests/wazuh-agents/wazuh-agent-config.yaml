@@ -1,3 +1,16 @@
+# =============================================================================
+# Wazuh Agent Configuration — Manager Connection Details
+#
+# Stores the Wazuh Manager server IP address that agents use to register
+# and send events. This ConfigMap is referenced by the wazuh-agent DaemonSet.
+#
+# SETUP: After deploying the Wazuh server with Terraform (deploy_wazuh = true),
+#        replace REPLACE_WITH_WAZUH_SERVER_IP with the private IP from:
+#          terraform output wazuh_private_ip
+#
+# Use the private IP (not public) because agents communicate over the VPC
+# internal network via ports 1514/1515.
+# =============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,4 +19,5 @@ metadata:
   labels:
     app: wazuh-agent
 data:
+  # Replace this placeholder with the Wazuh Manager's private IP address
   WAZUH_MANAGER_IP: "REPLACE_WITH_WAZUH_SERVER_IP"

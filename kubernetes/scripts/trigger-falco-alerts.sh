@@ -80,6 +80,11 @@ wait_for_pod() {
     return 1
 }
 
+# check_falco_logs - Search Falco pod logs for a pattern
+#
+# Checks the most recent LOG_TAIL_LINES lines from all Falco pods.
+# Falco runs as a DaemonSet, so we use -l (label selector) to get
+# logs from all instances and --all-containers to include sidecars.
 check_falco_logs() {
     local pattern="$1"
     local log_output

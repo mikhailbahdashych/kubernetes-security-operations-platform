@@ -1,3 +1,11 @@
+# =============================================================================
+# Gatekeeper Constraint: no-latest-tag
+#
+# Activates the K8sNoLatestTag template to enforce explicit image tags
+# on all Pods cluster-wide (except kube-system and gatekeeper-system).
+#
+# Enforcement: deny — non-compliant Pods are rejected at admission time.
+# =============================================================================
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sNoLatestTag
 metadata:
@@ -8,6 +16,7 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
+    # Exclude system namespaces whose images we do not control
     excludedNamespaces:
       - kube-system
       - gatekeeper-system

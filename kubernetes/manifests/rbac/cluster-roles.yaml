@@ -1,3 +1,25 @@
+# =============================================================================
+# RBAC — ClusterRoles (4-Tier Access Model)
+#
+# This platform implements a 4-tier RBAC model:
+#
+#   Tier 1: cluster-admin-role     — Full cluster access (break-glass only)
+#   Tier 2: security-operator-role — Read-only cluster-wide + CRUD in security
+#                                    namespaces (via separate namespace Roles)
+#   Tier 3: app-operator-role      — CRUD only in the "applications" namespace
+#                                    (defined in roles.yaml, not here)
+#   Tier 4: auditor-role           — Read-only access to everything (audit)
+#
+# NOTE: security-operator-role intentionally excludes Secrets from its
+# cluster-wide read access. Secret access in security namespaces is granted
+# via the namespace-scoped Roles in roles.yaml.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Tier 1: Cluster Admin — unrestricted access to all resources
+# Intended for platform administrators only. Bound to the "cluster-admins"
+# IAM group via ClusterRoleBinding.
+# -----------------------------------------------------------------------------
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -9,6 +31,12 @@ rules:
     resources: ["*"]
     verbs: ["*"]
 ---
+# -----------------------------------------------------------------------------
+# Tier 2: Security Operator — cluster-wide read-only (no Secrets)
+# This ClusterRole provides visibility across all namespaces but no write
+# access. Write access to security-monitoring and security-enforcement
+# namespaces is granted via separate namespace-scoped Roles (see roles.yaml).
+# -----------------------------------------------------------------------------
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -18,22 +46,34 @@ metadata:
   annotations:
     description: "Read-only cluster-wide access. CRUD in security namespaces via separate Roles."
 rules:
+  # Core resources — read-only across all namespaces
+  # NOTE: "secrets" is intentionally omitted to enforce least privilege
   - apiGroups: [""]
     resources: ["pods", "services", "configmaps", "events", "namespaces", "nodes", "persistentvolumes", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch"]
+  # Workload resources — read-only
   - apiGroups: ["apps"]
     resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
     verbs: ["get", "list", "watch"]
+  # Network resources — read-only (needed to inspect network policies)
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies", "ingresses"]
     verbs: ["get", "list", "watch"]
+  # RBAC resources — read-only (needed to audit role assignments)
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
     verbs: ["get", "list", "watch"]
+  # Batch resources — read-only
   - apiGroups: ["batch"]
     resources: ["jobs", "cronjobs"]
     verbs: ["get", "list", "watch"]
 ---
+# -----------------------------------------------------------------------------
+# Tier 4: Auditor — read-only access to ALL resources (including Secrets)
+# Designed for compliance auditors who need full visibility but no ability
+# to modify anything. Broader than security-operator because auditors may
+# need to verify secret configuration patterns.
+# -----------------------------------------------------------------------------
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

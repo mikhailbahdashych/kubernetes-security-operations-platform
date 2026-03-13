@@ -1,3 +1,20 @@
+# =============================================================================
+# Grafana Dashboard — Kubernetes Security Overview
+#
+# Auto-provisioned into Grafana via the sidecar (grafana_dashboard: "1" label).
+# The Grafana sidecar watches for ConfigMaps with this label and loads the
+# JSON dashboard automatically.
+#
+# Dashboard panels:
+#   1. Falco Alerts Over Time — bar chart of runtime security alerts by rule
+#      and priority (data from falcosidekick_inputs_total metric)
+#   2. Pod Security Violations (Gatekeeper) — shows policy violations detected
+#      during audit sweeps (data from gatekeeper_violations metric)
+#   3. Network Policy Drops — line chart of packets dropped by netfilter
+#      (data from node_netfilter_conntrack_stat_drop metric)
+#
+# All panels use Prometheus as the data source.
+# =============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -5,6 +22,7 @@ metadata:
   namespace: security-monitoring
   labels:
     app: grafana
+    # This label tells the Grafana sidecar to pick up and load this dashboard
     grafana_dashboard: "1"
 data:
   security-overview.json: |

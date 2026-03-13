@@ -1,4 +1,25 @@
-# Test 1: Privileged container - should be denied by K8sNoPrivilegedContainers
+# =============================================================================
+# Gatekeeper Test Violations — Policy Smoke Tests
+#
+# Each resource in this file intentionally violates exactly one Gatekeeper
+# policy. When applied with `kubectl apply`, Gatekeeper should REJECT every
+# resource. Used by kubernetes/scripts/test-gatekeeper.sh for automated
+# policy verification.
+#
+# IMPORTANT: Each test pod is otherwise compliant with all OTHER policies to
+# ensure it is rejected specifically for the intended violation. For example,
+# the "test-privileged" pod uses a valid image tag, has resource limits, and
+# has required labels — it only fails on the privileged flag.
+#
+# NOTE: Image names must be fully-qualified (e.g., "docker.io/library/nginx:1.27")
+# to pass the trusted-registries policy.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Test 1: Privileged container
+# Expected violation: K8sNoPrivilegedContainers
+# The "privileged: true" flag gives the container full host access.
+# -----------------------------------------------------------------------------
 apiVersion: v1
 kind: Pod
 metadata:
@@ -13,7 +34,7 @@ spec:
     - name: test-privileged
       image: docker.io/library/nginx:1.27
       securityContext:
-        privileged: true
+        privileged: true                  # <-- VIOLATION: privileged mode
         readOnlyRootFilesystem: true
       resources:
         limits:
@@ -23,7 +44,11 @@ spec:
           cpu: 50m
           memory: 32Mi
 ---
-# Test 2: Untrusted registry - should be denied by K8sTrustedRegistries
+# -----------------------------------------------------------------------------
+# Test 2: Untrusted registry
+# Expected violation: K8sTrustedRegistries
+# The image comes from "malicious-registry.io" which is not in the trusted list.
+# -----------------------------------------------------------------------------
 apiVersion: v1
 kind: Pod
 metadata:
@@ -36,7 +61,7 @@ metadata:
 spec:
   containers:
     - name: test-untrusted-registry
-      image: malicious-registry.io/evil:v1
+      image: malicious-registry.io/evil:v1  # <-- VIOLATION: untrusted registry
       securityContext:
         readOnlyRootFilesystem: true
         runAsNonRoot: true
@@ -49,7 +74,11 @@ spec:
           cpu: 50m
           memory: 32Mi
 ---
-# Test 3: No resource limits - should be denied by K8sRequiredResourceLimits
+# -----------------------------------------------------------------------------
+# Test 3: No resource limits
+# Expected violation: K8sRequiredResourceLimits
+# The container has no resources.limits section at all.
+# -----------------------------------------------------------------------------
 apiVersion: v1
 kind: Pod
 metadata:
@@ -67,14 +96,21 @@ spec:
         readOnlyRootFilesystem: true
         runAsNonRoot: true
         runAsUser: 1000
+      # <-- VIOLATION: no resources.limits defined
 ---
-# Test 4: Missing required labels - should be denied by K8sRequiredLabels
-# Note: This is a Deployment because the required-labels constraint targets Deployments
+# -----------------------------------------------------------------------------
+# Test 4: Missing required labels
+# Expected violation: K8sRequiredLabels
+# This is a Deployment (not a Pod) because the required-labels constraint
+# targets Deployments. The Deployment metadata has no "team" or "environment"
+# labels.
+# -----------------------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: test-no-labels
   namespace: applications
+  # <-- VIOLATION: missing "team" and "environment" labels
 spec:
   replicas: 1
   selector:
@@ -100,7 +136,11 @@ spec:
               cpu: 50m
               memory: 32Mi
 ---
-# Test 5: Latest tag - should be denied by K8sNoLatestTag
+# -----------------------------------------------------------------------------
+# Test 5: Latest tag
+# Expected violation: K8sNoLatestTag
+# Uses the ":latest" tag which is mutable and non-reproducible.
+# -----------------------------------------------------------------------------
 apiVersion: v1
 kind: Pod
 metadata:
@@ -113,7 +153,7 @@ metadata:
 spec:
   containers:
     - name: test-latest-tag
-      image: docker.io/library/nginx:latest
+      image: docker.io/library/nginx:latest  # <-- VIOLATION: :latest tag
       securityContext:
         readOnlyRootFilesystem: true
         runAsNonRoot: true
@@ -126,7 +166,11 @@ spec:
           cpu: 50m
           memory: 32Mi
 ---
-# Test 6: Writable root filesystem - should be denied by K8sReadOnlyRootFilesystem
+# -----------------------------------------------------------------------------
+# Test 6: Writable root filesystem
+# Expected violation: K8sReadOnlyRootFilesystem
+# Explicitly sets readOnlyRootFilesystem: false.
+# -----------------------------------------------------------------------------
 apiVersion: v1
 kind: Pod
 metadata:
@@ -141,7 +185,7 @@ spec:
     - name: test-writable-root
       image: docker.io/library/nginx:1.27
       securityContext:
-        readOnlyRootFilesystem: false
+        readOnlyRootFilesystem: false       # <-- VIOLATION: writable root FS
         runAsNonRoot: true
         runAsUser: 1000
       resources:

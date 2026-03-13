@@ -1,72 +1,96 @@
+# =============================================================================
+# Wazuh Docker Compose Stack — HIDS Server (v4.9.2)
+#
+# Three-container architecture:
+#   1. wazuh-indexer   — OpenSearch-based storage for security events
+#   2. wazuh-manager   — Core HIDS engine, receives agent data, triggers alerts
+#   3. wazuh-dashboard — Web UI (Kibana-based) for viewing alerts and compliance
+#
+# This file is injected into the EC2 user-data script by Terraform.
+#
+# NOTE: Default passwords below are for development only. In production,
+#       use Docker secrets or a secrets manager and rotate credentials.
+# =============================================================================
 version: "3.8"
 
 services:
+  # ---------------------------------------------------------------------------
+  # Wazuh Indexer (OpenSearch) — stores and indexes all security events
+  # ---------------------------------------------------------------------------
   wazuh-indexer:
     image: wazuh/wazuh-indexer:4.9.2
     container_name: wazuh-indexer
     restart: always
     ports:
-      - "9200:9200"
+      - "9200:9200"       # OpenSearch REST API (internal use by Manager/Dashboard)
     environment:
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
-      - "bootstrap.memory_lock=true"
-      - "discovery.type=single-node"
-      - "plugins.security.ssl.http.enabled=false"
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"  # JVM heap — 1 GiB is minimum for dev
+      - "bootstrap.memory_lock=true"            # Prevent JVM heap from being swapped to disk
+      - "discovery.type=single-node"            # No cluster formation — single instance
+      - "plugins.security.ssl.http.enabled=false" # SSL disabled for internal Docker networking
     ulimits:
+      # Unlimited memory locking — required for OpenSearch performance
       memlock:
         soft: -1
         hard: -1
+      # High file descriptor limit — OpenSearch opens many files for indexing
       nofile:
         soft: 65536
         hard: 65536
     volumes:
-      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - wazuh-indexer-data:/var/lib/wazuh-indexer      # Persistent index data
       - wazuh-indexer-config:/usr/share/wazuh-indexer/opensearch.yml
 
+  # ---------------------------------------------------------------------------
+  # Wazuh Manager — the core HIDS engine that processes agent events
+  # ---------------------------------------------------------------------------
   wazuh-manager:
     image: wazuh/wazuh-manager:4.9.2
     container_name: wazuh-manager
     restart: always
     ports:
-      - "1514:1514/tcp"
-      - "1514:1514/udp"
-      - "1515:1515"
-      - "514:514/udp"
-      - "55000:55000"
+      - "1514:1514/tcp"   # Agent event ingestion (TCP)
+      - "1514:1514/udp"   # Agent event ingestion (UDP)
+      - "1515:1515"       # Agent registration/enrollment
+      - "514:514/udp"     # Syslog collector
+      - "55000:55000"     # Wazuh REST API (used by Dashboard)
     environment:
       - INDEXER_URL=https://wazuh-indexer:9200
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
-      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - INDEXER_PASSWORD=SecretPassword           # TODO: Replace with secrets manager
+      - FILEBEAT_SSL_VERIFICATION_MODE=none       # Internal Docker network — no TLS needed
     volumes:
       - wazuh-manager-api:/var/ossec/api/configuration
-      - wazuh-manager-config:/var/ossec/etc
-      - wazuh-manager-data:/var/ossec/data
-      - wazuh-manager-logs:/var/ossec/logs
-      - wazuh-manager-queue:/var/ossec/queue
+      - wazuh-manager-config:/var/ossec/etc          # ossec.conf and agent keys
+      - wazuh-manager-data:/var/ossec/data           # Agent database
+      - wazuh-manager-logs:/var/ossec/logs           # Alert and archive logs
+      - wazuh-manager-queue:/var/ossec/queue         # Event processing queue
       - wazuh-manager-integrations:/var/ossec/integrations
       - wazuh-manager-active-response:/var/ossec/active-response/bin
       - wazuh-manager-agentless:/var/ossec/agentless
-      - wazuh-manager-wodles:/var/ossec/wodles
-      - filebeat-etc:/etc/filebeat
+      - wazuh-manager-wodles:/var/ossec/wodles       # Modules (vulnerability detector, etc.)
+      - filebeat-etc:/etc/filebeat                   # Filebeat ships events to Indexer
       - filebeat-var:/var/lib/filebeat
     depends_on:
       - wazuh-indexer
 
+  # ---------------------------------------------------------------------------
+  # Wazuh Dashboard — web UI for security event visualization
+  # ---------------------------------------------------------------------------
   wazuh-dashboard:
     image: wazuh/wazuh-dashboard:4.9.2
     container_name: wazuh-dashboard
     restart: always
     ports:
-      - "443:5601"
+      - "443:5601"        # Maps host HTTPS/443 to Dashboard's internal port 5601
     environment:
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
+      - INDEXER_PASSWORD=SecretPassword           # TODO: Replace with secrets manager
       - WAZUH_API_URL=https://wazuh-manager
       - DASHBOARD_USERNAME=kibanaserver
-      - DASHBOARD_PASSWORD=kibanaserver
+      - DASHBOARD_PASSWORD=kibanaserver           # TODO: Replace with secrets manager
       - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr37P450worD!
+      - API_PASSWORD=MyS3cr37P450worD!            # TODO: Replace with secrets manager
       - OPENSEARCH_HOSTS=https://wazuh-indexer:9200
     volumes:
       - wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
@@ -75,6 +99,7 @@ services:
       - wazuh-indexer
       - wazuh-manager
 
+# Named volumes for persistent data across container restarts
 volumes:
   wazuh-indexer-data:
   wazuh-indexer-config:

@@ -1,3 +1,7 @@
+# =============================================================================
+# EKS Module — Input Variables
+# =============================================================================
+
 variable "cluster_name" {
   description = "Name of the EKS cluster"
   type        = string
@@ -24,12 +28,16 @@ variable "private_subnet_ids" {
   type        = list(string)
 }
 
+# t3.medium (2 vCPU, 4 GiB) is the minimum recommended for running the
+# security stack (Falco + Prometheus + Gatekeeper) alongside workloads
 variable "instance_types" {
   description = "List of EC2 instance types for the managed node group"
   type        = list(string)
   default     = ["t3.medium"]
 }
 
+# 2 nodes provides enough capacity for the security stack + demo app
+# while keeping costs minimal
 variable "node_desired_size" {
   description = "Desired number of worker nodes"
   type        = number

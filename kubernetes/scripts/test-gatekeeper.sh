@@ -56,6 +56,11 @@ fail() {
 
 # ---------------------------------------------------------------------------
 # test_violation - Apply a manifest and expect Gatekeeper to reject it
+#
+# Logic: attempts kubectl apply and checks stderr for rejection keywords.
+# The || true prevents set -e from exiting — we EXPECT the command to fail.
+# If the resource is accidentally created (policy not working), we clean
+# it up to avoid leaving test artifacts in the cluster.
 # ---------------------------------------------------------------------------
 test_violation() {
     local name="$1"
@@ -66,6 +71,8 @@ test_violation() {
     local output
     output=$(kubectl apply -f "$file" 2>&1 || true)
 
+    # Gatekeeper rejection messages contain keywords like "denied",
+    # "forbidden", or "violated" — we check for any of these patterns
     if echo "$output" | grep -qiE "denied|Error from server|admission webhook.*denied|violated|forbidden"; then
         pass "${name} was correctly rejected"
     else
@@ -136,27 +143,35 @@ YAML
 
 # ---------------------------------------------------------------------------
 # test_individual_violations - Split multi-doc YAML and test each
+#
+# The test-violations.yaml file contains multiple resources separated by
+# "---". Each resource is designed to violate exactly one Gatekeeper policy.
+# We split the file so each resource is tested independently — this way
+# a single test failure doesn't prevent other tests from running, and we
+# get clear pass/fail reporting per violation type.
 # ---------------------------------------------------------------------------
 test_individual_violations() {
     local file="$1"
     local basename
     basename=$(basename "$file" .yaml)
 
-    # Count documents in the file
+    # Count --- separators to determine if this is multi-doc YAML
     local doc_count
     doc_count=$(grep -c '^---' "$file" 2>/dev/null || echo "0")
 
     if [[ "$doc_count" -gt 0 ]]; then
-        # Multi-document YAML: split and test each
+        # Multi-document YAML: split into individual files using awk
         local idx=0
         local tmpdir
         tmpdir=$(mktemp -d)
 
-        # Use awk to split on --- boundaries
+        # awk splits on "---" boundaries, writing each document to a
+        # separate file (doc-0.yaml, doc-1.yaml, etc.)
         awk '/^---$/{idx++; next} {print > "'"${tmpdir}"'/doc-" idx ".yaml"}' idx=0 "$file"
 
         for doc in "${tmpdir}"/doc-*.yaml; do
             if [[ -f "$doc" ]] && [[ -s "$doc" ]]; then
+                # Extract kind and name for descriptive test output
                 local kind name
                 kind=$(grep -m1 '^kind:' "$doc" | awk '{print $2}' || echo "unknown")
                 name=$(grep -m1 'name:' "$doc" | awk '{print $NF}' || echo "unknown")
@@ -166,7 +181,7 @@ test_individual_violations() {
 
         rm -rf "$tmpdir"
     else
-        # Single-document YAML
+        # Single-document YAML — test directly
         test_violation "$basename" "$file"
     fi
 }

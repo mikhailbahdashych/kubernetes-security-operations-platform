@@ -1,3 +1,23 @@
+# =============================================================================
+# Gatekeeper Constraint Template: K8sTrustedRegistries
+#
+# Restricts container images to a curated list of trusted registries.
+# This prevents:
+#   - Pulling images from untrusted/malicious registries (supply chain attacks)
+#   - Typosquatting attacks (e.g., "dockr.io" instead of "docker.io")
+#   - Shadow IT deployments using unapproved base images
+#
+# This is a parameterized template — the list of allowed registry prefixes
+# is passed via the constraint's parameters.repos field.
+#
+# Rego logic:
+#   - Checks both containers[] and initContainers[]
+#   - Rejects if image does not start with any prefix in parameters.repos
+#
+# Corresponding constraint: constraints/trusted-registries.yaml
+# Trusted prefixes: docker.io/library/, public.ecr.aws/, registry.k8s.io/,
+#                   quay.io/, ghcr.io/
+# =============================================================================
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -35,6 +55,7 @@ spec:
           msg := sprintf("Init container '%v' uses an untrusted image '%v'. Allowed registries are: %v", [container.name, container.image, input.parameters.repos])
         }
 
+        # Helper: returns true if the image starts with any trusted repo prefix
         image_from_trusted_repo(image) {
           repo := input.parameters.repos[_]
           startswith(image, repo)

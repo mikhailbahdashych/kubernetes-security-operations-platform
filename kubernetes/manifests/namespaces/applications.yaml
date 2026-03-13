@@ -1,3 +1,19 @@
+# =============================================================================
+# Namespace: applications
+#
+# Hosts demo/production application workloads. This is the most restrictive
+# namespace — enforces the "restricted" Pod Security Standard (PSS), which
+# requires:
+#   - runAsNonRoot: true
+#   - No privileged containers
+#   - No host namespaces or host ports
+#   - Read-only root filesystem (recommended)
+#   - Drop ALL capabilities
+#   - Seccomp profile must be set
+#
+# All Gatekeeper policies that target specific namespaces (resource limits,
+# required labels, read-only root filesystem) apply here.
+# =============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -5,4 +21,6 @@ metadata:
   labels:
     name: applications
     purpose: demo-applications
+    # PSS "restricted" — the strictest built-in policy level.
+    # Pods that violate these rules will be rejected by the API server.
     pod-security.kubernetes.io/enforce: restricted

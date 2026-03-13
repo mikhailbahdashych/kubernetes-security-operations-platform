@@ -1,3 +1,22 @@
+# =============================================================================
+# Gatekeeper Constraint Template: K8sReadOnlyRootFilesystem
+#
+# Requires containers to set securityContext.readOnlyRootFilesystem: true.
+# A read-only root filesystem prevents attackers from:
+#   - Writing malicious scripts to the container filesystem
+#   - Modifying system binaries (supply chain attacks)
+#   - Persisting backdoors that survive container restarts
+#
+# Containers that need writable directories should use emptyDir volumes
+# mounted at specific paths (e.g., /tmp, /var/cache).
+#
+# Rego logic:
+#   - Checks both containers[] and initContainers[]
+#   - Rejects if readOnlyRootFilesystem is not explicitly set to true
+#
+# Corresponding constraint: constraints/read-only-root-filesystem.yaml
+# (scoped to "applications" namespace only)
+# =============================================================================
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:

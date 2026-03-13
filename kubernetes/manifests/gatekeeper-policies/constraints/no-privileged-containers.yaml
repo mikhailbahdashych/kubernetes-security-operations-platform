@@ -1,3 +1,16 @@
+# =============================================================================
+# Gatekeeper Constraint: no-privileged-containers
+#
+# Activates the K8sNoPrivilegedContainers template to block privileged
+# containers cluster-wide, with exceptions for namespaces that need them.
+#
+# Enforcement: deny — non-compliant Pods are rejected at admission time.
+#
+# Excluded namespaces:
+#   - kube-system, gatekeeper-system — managed by AWS/Gatekeeper
+#   - security-monitoring — Falco needs kernel access via eBPF
+#   - wazuh-agents — Wazuh agents run as root to read host logs
+# =============================================================================
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sNoPrivilegedContainers
 metadata:
@@ -11,5 +24,6 @@ spec:
     excludedNamespaces:
       - kube-system
       - gatekeeper-system
-      - security-monitoring
-      - wazuh-agents
+      # Security tools require elevated privileges to function:
+      - security-monitoring    # Falco uses modern_ebpf driver
+      - wazuh-agents           # Wazuh agents need root for host log access

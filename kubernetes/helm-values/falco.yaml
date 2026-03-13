@@ -1,27 +1,59 @@
-## Values for Falco Helm chart
-## Install: helm install falco falcosecurity/falco -n security-monitoring -f falco.yaml
+# =============================================================================
+# Helm Values: Falco — Runtime Security & Threat Detection
+#
+# Chart: falcosecurity/falco
+# Install command:
+#   helm install falco falcosecurity/falco \
+#     -n security-monitoring -f falco.yaml
+#
+# Falco monitors system calls on every node using eBPF and detects suspicious
+# runtime behavior (shell spawning, sensitive file access, network anomalies,
+# privilege escalation). Alerts are forwarded to Falcosidekick via HTTP.
+#
+# This configuration includes 4 custom rules mapped to MITRE ATT&CK.
+# =============================================================================
 
+# ---------------------------------------------------------------------------
+# Driver configuration
+# modern_ebpf uses the CO-RE (Compile Once, Run Everywhere) eBPF driver,
+# which does not require kernel headers to be installed on the host.
+# This is the recommended driver for EKS with Amazon Linux 2023 nodes.
+# ---------------------------------------------------------------------------
 driver:
   kind: modern_ebpf
 
+# ---------------------------------------------------------------------------
+# Falco engine settings
+# ---------------------------------------------------------------------------
 falco:
-  json_output: true
-  json_include_output_property: true
-  json_include_tags_property: true
-  log_stderr: true
-  log_syslog: false
+  json_output: true                    # Output alerts as JSON (required by Falcosidekick)
+  json_include_output_property: true   # Include the human-readable "output" field in JSON
+  json_include_tags_property: true     # Include MITRE ATT&CK tags in JSON output
+  log_stderr: true                     # Log to stderr (captured by kubectl logs)
+  log_syslog: false                    # Disable syslog — we use structured logging
   log_level: info
+  # Minimum priority for alerts — only WARNING and above are forwarded.
+  # This filters out NOTICE/INFO events that are too noisy for most environments.
   priority: WARNING
+  # Forward alerts to Falcosidekick over HTTP (not gRPC)
   http_output:
     enabled: true
     url: "http://falcosidekick.security-monitoring.svc.cluster.local:2801"
+  # gRPC is disabled — we use HTTP output to Falcosidekick instead
   grpc:
     enabled: false
   grpc_output:
     enabled: false
 
+# ---------------------------------------------------------------------------
+# Custom Rules — platform-specific runtime detection rules
+# These rules are embedded directly in the Helm values for single-source
+# management. They are also stored as a ConfigMap in
+# kubernetes/manifests/security-monitoring/falco-custom-rules.yaml.
+# ---------------------------------------------------------------------------
 customRules:
   custom-rules.yaml: |-
+    # Detect interactive shell sessions in containers (MITRE T1059)
     - rule: Terminal Shell in Container
       desc: >
         Detect a shell (bash, sh, zsh) spawned inside a container.
@@ -42,6 +74,7 @@ customRules:
         - shell
         - mitre_execution
 
+    # Detect reads of /etc/shadow or /etc/passwd (MITRE T1003)
     - rule: Sensitive File Access
       desc: >
         Detect when a process inside a container reads sensitive files
@@ -61,6 +94,7 @@ customRules:
         - filesystem
         - mitre_credential_access
 
+    # Detect outbound connections to public IPs (MITRE T1041)
     - rule: Unexpected Outbound Connection
       desc: >
         Detect outbound network connections from containers to
@@ -83,6 +117,7 @@ customRules:
         - network
         - mitre_exfiltration
 
+    # Detect setuid/setgid syscalls — privilege escalation (MITRE T1548)
     - rule: Privilege Escalation Attempt
       desc: >
         Detect setuid or setgid system calls inside containers,
@@ -104,6 +139,10 @@ customRules:
         - privilege_escalation
         - mitre_privilege_escalation
 
+# ---------------------------------------------------------------------------
+# Resource limits — Falco runs as a DaemonSet, so these apply per node.
+# eBPF processing is CPU-intensive during high syscall volumes.
+# ---------------------------------------------------------------------------
 resources:
   limits:
     memory: 512Mi
@@ -112,6 +151,10 @@ resources:
     memory: 256Mi
     cpu: 100m
 
+# ---------------------------------------------------------------------------
+# Tolerations — run Falco on ALL nodes including control plane
+# (same pattern as the Wazuh agent DaemonSet)
+# ---------------------------------------------------------------------------
 tolerations:
   - key: node-role.kubernetes.io/control-plane
     effect: NoSchedule

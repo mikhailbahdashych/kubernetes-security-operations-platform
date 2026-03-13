@@ -1,3 +1,10 @@
+# =============================================================================
+# Dev Environment — Input Variables
+#
+# Override these in terraform.tfvars or via -var flags.
+# Defaults are optimized for cost-effective development use.
+# =============================================================================
+
 variable "project_name" {
   description = "Name of the project, used as prefix for resource names"
   type        = string
@@ -10,6 +17,7 @@ variable "environment" {
   default     = "dev"
 }
 
+# eu-central-1 (Frankfurt) chosen for GDPR compliance proximity
 variable "region" {
   description = "AWS region to deploy resources"
   type        = string
@@ -46,6 +54,8 @@ variable "node_max_size" {
   default     = 3
 }
 
+# Wazuh is opt-in because it adds ~$50/month in EC2 costs and is only
+# needed when testing the HIDS integration
 variable "deploy_wazuh" {
   description = "Whether to deploy the Wazuh server (opt-in)"
   type        = bool

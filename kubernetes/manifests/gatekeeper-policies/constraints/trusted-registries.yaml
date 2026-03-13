@@ -1,3 +1,22 @@
+# =============================================================================
+# Gatekeeper Constraint: trusted-registries
+#
+# Activates the K8sTrustedRegistries template to restrict which container
+# image registries are allowed cluster-wide. This is a critical supply chain
+# security control.
+#
+# Allowed registries:
+#   - docker.io/library/  — Official Docker Hub images (nginx, busybox, etc.)
+#   - public.ecr.aws/     — AWS public container registry
+#   - registry.k8s.io/    — Official Kubernetes images (kube-proxy, CoreDNS)
+#   - quay.io/            — Red Hat / community images (Prometheus, etc.)
+#   - ghcr.io/            — GitHub Container Registry
+#
+# NOTE: Images must use fully-qualified names (e.g., "docker.io/library/nginx:1.27"
+# instead of just "nginx:1.27") to pass this policy.
+#
+# Enforcement: deny — Pods with untrusted images are rejected at admission time.
+# =============================================================================
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sTrustedRegistries
 metadata:
@@ -8,6 +27,7 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
+    # Exclude system namespaces — their images are managed by AWS/Gatekeeper
     excludedNamespaces:
       - kube-system
       - gatekeeper-system
