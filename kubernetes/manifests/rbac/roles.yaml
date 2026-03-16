@@ -1,0 +1,91 @@
+# =============================================================================
+# RBAC — Namespace-scoped Roles
+#
+# These Roles grant write (CRUD) permissions within specific namespaces,
+# complementing the read-only ClusterRoles defined in cluster-roles.yaml.
+#
+#   - app-operator-role:               CRUD in "applications" namespace (Tier 3)
+#   - security-operator-manage-role:   CRUD in "security-monitoring" and
+#                                      "security-enforcement" namespaces (Tier 2)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Tier 3: App Operator — full CRUD in the "applications" namespace only
+# Can deploy and manage application workloads but has zero access to
+# security infrastructure or cluster-wide resources.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-operator-role
+  namespace: applications
+  labels:
+    app: security-operations
+rules:
+  # Core resources — full CRUD for application deployment
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Deployments — the primary workload resource for app operators
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Ingresses — for exposing applications externally
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# -----------------------------------------------------------------------------
+# Tier 2: Security Operator — full CRUD in "security-monitoring" namespace
+# This namespace-scoped Role is bound alongside the cluster-wide read-only
+# ClusterRole, giving security operators the ability to manage monitoring
+# tools (Falco rules, Grafana dashboards, Prometheus configs) while
+# maintaining read-only visibility across the cluster.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: security-operator-manage-role
+  namespace: security-monitoring
+  labels:
+    app: security-operations
+  annotations:
+    description: "Full CRUD in security-monitoring namespace for security operators."
+rules:
+  # Core resources — includes Secrets (for TLS certs, API keys used by tools)
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Workload resources — for managing Falco DaemonSets, Prometheus StatefulSets, etc.
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Batch resources — for scheduled security scans or cleanup jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# -----------------------------------------------------------------------------
+# Tier 2: Security Operator — full CRUD in "security-enforcement" namespace
+# Same permissions as above but scoped to the namespace where OPA Gatekeeper
+# runs. Allows security operators to manage constraint templates and constraints.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: security-operator-manage-role
+  namespace: security-enforcement
+  labels:
+    app: security-operations
+  annotations:
+    description: "Full CRUD in security-enforcement namespace for security operators."
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

@@ -1,0 +1,61 @@
+# =============================================================================
+# Network Policy: Default Deny All
+#
+# Applies a "zero trust" baseline to every namespace by denying ALL ingress
+# and egress traffic by default. This is the foundation of the network
+# security model — every allowed communication path must be explicitly
+# granted via additional NetworkPolicy resources.
+#
+# Without this policy, Kubernetes allows all pod-to-pod traffic by default,
+# which violates the principle of least privilege.
+#
+# Applied to: applications, security-monitoring, security-enforcement, wazuh-agents
+# =============================================================================
+
+# Default deny in "applications" — no traffic in or out unless explicitly allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: applications
+spec:
+  podSelector: {}   # Selects ALL pods in the namespace
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Default deny in "security-monitoring" — isolates Falco, Prometheus, Grafana
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: security-monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Default deny in "security-enforcement" — isolates Gatekeeper
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: security-enforcement
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Default deny in "wazuh-agents" — isolates Wazuh DaemonSet pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: wazuh-agents
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

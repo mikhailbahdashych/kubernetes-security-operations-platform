@@ -1,0 +1,66 @@
+# =============================================================================
+# Network Policies: wazuh-agents namespace
+#
+# Allows Wazuh agent DaemonSet pods to communicate with:
+#   1. The external Wazuh Manager server (TCP 1514/1515) for event reporting
+#      and agent enrollment
+#   2. The Kubernetes API server (HTTPS/443) for container/pod metadata
+#      collection
+#
+# All other traffic is blocked by the default-deny policy.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Wazuh Agent egress to Wazuh Manager server
+# Ports:
+#   1514 — Event data channel (agent sends logs and alerts)
+#   1515 — Agent registration/enrollment (one-time handshake)
+# The manager runs on an EC2 instance outside the cluster, so we use
+# 0.0.0.0/0 as the destination (security group on the EC2 side restricts
+# which sources can connect).
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wazuh-agent-egress-to-server
+  namespace: wazuh-agents
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-agent
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 1514
+        - protocol: TCP
+          port: 1515
+---
+# -----------------------------------------------------------------------------
+# Wazuh Agent egress to Kubernetes API server (HTTPS/443)
+# The agent queries the API server to enrich security events with pod
+# metadata (pod name, namespace, labels). The EKS API server endpoint
+# is outside the VPC CIDR, so we allow 0.0.0.0/0 on port 443.
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wazuh-agent-egress-to-apiserver
+  namespace: wazuh-agents
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-agent
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

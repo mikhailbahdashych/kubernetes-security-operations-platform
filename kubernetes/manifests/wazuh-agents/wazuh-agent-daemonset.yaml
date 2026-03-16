@@ -1,0 +1,91 @@
+# =============================================================================
+# Wazuh Agent DaemonSet — Host Intrusion Detection on Every Node
+#
+# Deploys a Wazuh agent on every EKS node (including control plane nodes
+# via tolerations). Each agent:
+#   - Monitors host system logs (/var/log) for security events
+#   - Performs file integrity monitoring (FIM)
+#   - Detects vulnerabilities in installed packages
+#   - Reports to the central Wazuh Manager server over TCP/1514
+#
+# Security considerations:
+#   - Runs as root (UID 0) because it needs to read host-level files
+#   - Mounts host paths read-only (/var/log, /etc/os-release)
+#   - Uses emptyDir for agent state (non-persistent — re-registers on restart)
+#   - Requires the wazuh-agents namespace with "privileged" PSS
+# =============================================================================
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: wazuh-agent
+  namespace: wazuh-agents
+  labels:
+    app: wazuh-agent
+spec:
+  selector:
+    matchLabels:
+      app: wazuh-agent
+  template:
+    metadata:
+      labels:
+        app: wazuh-agent
+    spec:
+      # Tolerations ensure agents run on ALL nodes, including control plane
+      # nodes that have NoSchedule taints
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+      containers:
+        - name: wazuh-agent
+          image: docker.io/wazuh/wazuh-agent:4.9.2
+          env:
+            # Manager address for event forwarding (TCP/1514)
+            - name: WAZUH_MANAGER
+              valueFrom:
+                configMapKeyRef:
+                  name: wazuh-agent-config
+                  key: WAZUH_MANAGER_IP
+            # Registration server for initial agent enrollment (TCP/1515)
+            - name: WAZUH_REGISTRATION_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: wazuh-agent-config
+                  key: WAZUH_MANAGER_IP
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 200m
+            requests:
+              memory: 128Mi
+              cpu: 100m
+          securityContext:
+            # Must run as root to read host logs and system files
+            runAsUser: 0
+          volumeMounts:
+            # Agent state — uses emptyDir so state is lost on pod restart
+            # (agent will re-register with the manager automatically)
+            - name: wazuh-data
+              mountPath: /var/ossec/data
+            # Host logs — mounted read-only for log collection
+            - name: host-var-log
+              mountPath: /var/log
+              readOnly: true
+            # OS release info — used by the vulnerability detector module
+            - name: host-os-release
+              mountPath: /etc/os-release
+              readOnly: true
+      volumes:
+        - name: wazuh-data
+          emptyDir: {}
+        # hostPath mounts — these give the agent read access to the node's
+        # filesystem (restricted to specific paths, not the entire host)
+        - name: host-var-log
+          hostPath:
+            path: /var/log
+            type: Directory
+        - name: host-os-release
+          hostPath:
+            path: /etc/os-release
+            type: File

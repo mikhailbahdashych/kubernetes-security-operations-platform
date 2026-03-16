@@ -1,0 +1,145 @@
+# =============================================================================
+# Network Policies: security-monitoring namespace
+#
+# Allows the monitoring stack components to communicate:
+#
+#   Prometheus (9090) <-- ingress from within namespace (Grafana queries it)
+#   Grafana (3000)    <-- ingress from within namespace (operator access)
+#   Prometheus        --> egress to all namespaces for scraping metrics
+#   Prometheus        --> egress to API server (443) for service discovery
+#   Falco             --> egress to Falcosidekick (2801) for alert forwarding
+#
+# Cross-namespace scraping is intentional — Prometheus needs to reach
+# exporters in kube-system, applications, etc.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Prometheus ingress — allow queries from Grafana and other tools in the
+# same namespace on port 9090
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-ingress
+  namespace: security-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security-monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+# -----------------------------------------------------------------------------
+# Grafana ingress — allow dashboard access from within the namespace
+# (reached via kubectl port-forward or an internal LB)
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-grafana-ingress
+  namespace: security-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security-monitoring
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# -----------------------------------------------------------------------------
+# Prometheus egress — allow scraping metrics from targets in ALL namespaces.
+# Ports:
+#   9090  — Prometheus itself (federation)
+#   9100  — node-exporter (host metrics)
+#   8080  — various exporters (kube-state-metrics, Falco metrics, etc.)
+#   10250 — kubelet metrics endpoint
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape-targets
+  namespace: security-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}   # Any namespace
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9100
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 10250
+---
+# -----------------------------------------------------------------------------
+# Prometheus egress to the Kubernetes API server (HTTPS/443)
+# Required for service discovery — Prometheus queries the API server to find
+# scrape targets dynamically. The API server runs outside the cluster network
+# (EKS-managed), so we allow 0.0.0.0/0 on port 443.
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-apiserver
+  namespace: security-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# -----------------------------------------------------------------------------
+# Falco egress to Falcosidekick — port 2801
+# Falco detects runtime threats and forwards alerts to Falcosidekick,
+# which then routes them to configured outputs (Prometheus metrics, webhooks).
+# This policy restricts Falco's network access to only Falcosidekick.
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-falco-egress-to-falcosidekick
+  namespace: security-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: falco
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: falcosidekick
+      ports:
+        - protocol: TCP
+          port: 2801

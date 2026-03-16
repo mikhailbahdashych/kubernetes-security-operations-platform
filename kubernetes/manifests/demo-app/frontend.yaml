@@ -1,0 +1,106 @@
+# =============================================================================
+# Demo Application — Frontend (nginx web server)
+#
+# A security-hardened nginx container serving on port 80 as the frontend
+# entry point. In a real application, this would serve static files and
+# proxy API requests to the backend.
+#
+# Same security hardening as the backend — runs as non-root, read-only
+# filesystem, all capabilities dropped, resource limits set.
+#
+# Network policies restrict this pod to:
+#   - Receive ingress from within the applications namespace (port 80)
+#   - Send egress only to Backend pods (port 8080) and HTTPS internet
+# =============================================================================
+
+# Deployment — single replica frontend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-frontend
+  namespace: applications
+  labels:
+    app: demo-app-frontend
+    team: demo                    # Required by K8sRequiredLabels constraint
+    environment: dev              # Required by K8sRequiredLabels constraint
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-frontend
+  template:
+    metadata:
+      labels:
+        app: demo-app-frontend
+        team: demo
+        environment: dev
+    spec:
+      # Pod-level security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: frontend
+          # Uses the full (non-alpine) nginx image — note this is a different
+          # variant than the backend to demonstrate both work with the
+          # trusted registries policy
+          image: docker.io/library/nginx:1.27
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          # Resource limits — required by K8sRequiredResourceLimits
+          resources:
+            limits:
+              memory: 128Mi
+              cpu: 250m
+            requests:
+              memory: 64Mi
+              cpu: 100m
+          # Security hardening — identical to backend
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          # Writable directories for nginx runtime files
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: run
+              mountPath: /var/run
+      # tmpfs-backed volumes for nginx writable directories
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        - name: cache
+          emptyDir:
+            medium: Memory
+        - name: run
+          emptyDir:
+            medium: Memory
+---
+# ClusterIP Service — internal-only access point for the frontend
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-frontend
+  namespace: applications
+  labels:
+    app: demo-app-frontend
+    team: demo
+    environment: dev
+spec:
+  type: ClusterIP
+  selector:
+    app: demo-app-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP

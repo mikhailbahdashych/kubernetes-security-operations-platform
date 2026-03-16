@@ -1,0 +1,22 @@
+# =============================================================================
+# Namespace: security-monitoring
+#
+# Hosts the monitoring and runtime security stack:
+#   - Prometheus + Grafana (kube-prometheus-stack)
+#   - Falco (runtime threat detection)
+#   - Falcosidekick (alert routing)
+#
+# Uses "privileged" PSS because Falco requires access to the host kernel
+# (via eBPF) to monitor system calls. Prometheus node-exporter also needs
+# host filesystem access for metrics collection.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-monitoring
+  labels:
+    name: security-monitoring
+    purpose: security-monitoring
+    # PSS "privileged" — no restrictions. Required because Falco uses
+    # modern_ebpf driver which needs host-level kernel access.
+    pod-security.kubernetes.io/enforce: privileged

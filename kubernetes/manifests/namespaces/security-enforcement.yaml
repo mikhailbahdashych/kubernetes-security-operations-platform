@@ -1,0 +1,21 @@
+# =============================================================================
+# Namespace: security-enforcement
+#
+# Hosts OPA Gatekeeper (the policy admission controller). Uses the "baseline"
+# PSS level because Gatekeeper's controller and audit pods need capabilities
+# that "restricted" would deny (e.g., certain volume types), but it does not
+# need the full "privileged" level.
+#
+# Gatekeeper enforces policies on OTHER namespaces via admission webhooks
+# while running inside this namespace.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-enforcement
+  labels:
+    name: security-enforcement
+    purpose: policy-enforcement
+    # PSS "baseline" — prevents known privilege escalations while allowing
+    # more flexibility than "restricted" (e.g., non-root UID not required)
+    pod-security.kubernetes.io/enforce: baseline

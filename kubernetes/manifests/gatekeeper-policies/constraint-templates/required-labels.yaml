@@ -1,0 +1,50 @@
+# =============================================================================
+# Gatekeeper Constraint Template: K8sRequiredLabels
+#
+# Enforces that Kubernetes objects have specific labels set. Labels are
+# essential for:
+#   - Resource ownership tracking (who owns this workload?)
+#   - Cost allocation (which team is consuming resources?)
+#   - Network policy targeting (selectors rely on labels)
+#   - Monitoring and alerting (filter metrics by label)
+#
+# This is a parameterized template — the list of required label keys is
+# passed via the constraint's parameters.labels field.
+#
+# Rego logic:
+#   - Iterates over the required labels list from parameters
+#   - Rejects if any required label is missing from the object's metadata
+#
+# Corresponding constraint: constraints/required-labels.yaml
+# (requires "app", "team", "environment" on Deployments in "applications")
+# =============================================================================
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredlabels
+  annotations:
+    description: "Denies objects that are missing required labels."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredLabels
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            labels:
+              type: array
+              items:
+                type: string
+              description: "List of required label keys."
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredlabels
+
+        violation[{"msg": msg}] {
+          required_label := input.parameters.labels[_]
+          not input.review.object.metadata.labels[required_label]
+          msg := sprintf("Object is missing required label '%v'.", [required_label])
+        }

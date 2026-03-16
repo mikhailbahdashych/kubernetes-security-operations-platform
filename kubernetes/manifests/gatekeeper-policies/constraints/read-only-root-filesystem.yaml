@@ -1,0 +1,26 @@
+# =============================================================================
+# Gatekeeper Constraint: read-only-root-filesystem
+#
+# Activates the K8sReadOnlyRootFilesystem template, but only for the
+# "applications" namespace. This is intentionally scoped narrowly because
+# many infrastructure tools (Prometheus, Falco, Gatekeeper itself) need
+# writable filesystems for their runtime state.
+#
+# Application workloads should use emptyDir volumes for writable directories
+# rather than a writable root filesystem.
+#
+# Enforcement: deny — non-compliant Pods are rejected at admission time.
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sReadOnlyRootFilesystem
+metadata:
+  name: read-only-root-filesystem
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    # Only enforced in applications — security tools need writable filesystems
+    namespaces:
+      - applications

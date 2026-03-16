@@ -1,0 +1,73 @@
+# =============================================================================
+# Helm Values: OPA Gatekeeper — Policy Admission Controller
+#
+# Chart: gatekeeper/gatekeeper
+# Install command:
+#   helm install gatekeeper gatekeeper/gatekeeper \
+#     -n security-enforcement -f gatekeeper.yaml
+#
+# Gatekeeper intercepts Kubernetes API requests via a validating admission
+# webhook and evaluates them against OPA (Open Policy Agent) Rego policies.
+# Non-compliant resources are rejected before they are persisted to etcd.
+#
+# Architecture:
+#   - Controller Manager (2 replicas) — handles admission webhooks
+#   - Audit Controller — periodically scans existing resources for violations
+# =============================================================================
+
+# 2 replicas for the webhook controller — ensures policy enforcement survives
+# a single pod failure (combined with PDB below)
+replicas: 2
+
+# ---------------------------------------------------------------------------
+# Audit settings — periodic background scan of existing resources
+# ---------------------------------------------------------------------------
+# Audit runs every 60 seconds to find resources that violate constraints
+# (e.g., resources created before a constraint was applied)
+auditInterval: 60
+# Maximum violations stored per constraint — prevents excessive memory usage
+constraintViolationsLimit: 100
+# auditFromCache: false — audit reads directly from the API server for
+# accuracy (cached data may be stale)
+auditFromCache: false
+# Emit audit events to the Kubernetes event stream — useful for monitoring
+# and debugging policy violations via kubectl get events
+emitAuditEvents: true
+# Admission events are disabled to reduce noise — audit events are sufficient
+emitAdmissionEvents: false
+
+# ---------------------------------------------------------------------------
+# Exempt namespaces — Gatekeeper will NOT enforce policies on these namespaces.
+# kube-system runs critical infrastructure (CoreDNS, kube-proxy) that may
+# not conform to all policies. gatekeeper-system is Gatekeeper's own namespace.
+# ---------------------------------------------------------------------------
+exemptNamespaces:
+  - kube-system
+  - gatekeeper-system
+
+# ---------------------------------------------------------------------------
+# Resource limits — sized for a 2-node dev cluster
+# ---------------------------------------------------------------------------
+controllerManager:
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 200m
+    requests:
+      memory: 256Mi
+      cpu: 100m
+
+audit:
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 100m
+    requests:
+      memory: 128Mi
+      cpu: 50m
+
+# PodDisruptionBudget — ensures at least 1 controller pod is always running
+# during voluntary disruptions (node drain, cluster upgrade)
+pdb:
+  controllerManager:
+    minAvailable: 1

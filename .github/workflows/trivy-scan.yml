@@ -1,0 +1,98 @@
+# =============================================================================
+# CI Workflow: Trivy Security Scan
+#
+# Runs Aqua Security's Trivy scanner for misconfigurations and IaC issues.
+# Triggers on pushes, PRs to main, and weekly (Monday 06:00 UTC) for
+# continuous security posture monitoring.
+#
+# Jobs:
+#   1. config-scan — filesystem scan for misconfigurations across the entire
+#      repo (Kubernetes, Dockerfiles, CI configs). Exits non-zero on
+#      HIGH/CRITICAL findings.
+#   2. iac-scan    — dedicated Terraform IaC scan with SARIF output uploaded
+#      to GitHub Security tab for integrated vulnerability tracking.
+#
+# Why Trivy in addition to tfsec/Checkov? Trivy covers Kubernetes manifests,
+# Dockerfiles, and other config formats that tfsec/Checkov do not scan.
+# =============================================================================
+name: Trivy Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Weekly scan catches drift and newly disclosed vulnerabilities
+  schedule:
+    - cron: "0 6 * * 1"             # Every Monday at 06:00 UTC
+
+permissions:
+  contents: read
+  # security-events: write is required to upload SARIF results to
+  # the GitHub Security tab (Code Scanning alerts)
+  security-events: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Configuration Scan — full repository misconfiguration scan
+  # Scans all files (Terraform, Kubernetes YAML, Dockerfiles, etc.) for
+  # security misconfigurations. Only flags HIGH and CRITICAL severity.
+  # ---------------------------------------------------------------------------
+  config-scan:
+    name: Configuration Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan for misconfigurations
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"              # Filesystem scan (all file types)
+          scan-ref: "."                # Scan entire repository
+          scanners: "misconfig"        # Only misconfigurations (not vulnerabilities)
+          format: "table"              # Human-readable output
+          exit-code: "1"               # Fail the job on findings
+          severity: "HIGH,CRITICAL"    # Only flag serious issues
+
+  # ---------------------------------------------------------------------------
+  # Job 2: IaC Scan — Terraform-specific security scan with SARIF upload
+  # Produces both a human-readable table output (for PR feedback) and a
+  # SARIF file (for GitHub Security tab integration).
+  # ---------------------------------------------------------------------------
+  iac-scan:
+    name: IaC Scan (Terraform)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # First run — table format for human-readable output in the Actions log
+      - name: Run Trivy IaC scan on Terraform
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "config"          # IaC configuration scan
+          scan-ref: "terraform/"       # Only scan Terraform directory
+          format: "table"
+          exit-code: "1"               # Fail on HIGH/CRITICAL
+          severity: "HIGH,CRITICAL"
+          trivyignores: ".trivyignore" # Suppress known false positives
+
+      # Second run — SARIF format for GitHub Security tab
+      # Runs even if the first step fails (if: always())
+      - name: Run Trivy IaC scan (SARIF output)
+        uses: aquasecurity/trivy-action@0.28.0
+        if: always()
+        with:
+          scan-type: "config"
+          scan-ref: "terraform/"
+          format: "sarif"
+          output: "trivy-iac-results.sarif"
+          severity: "HIGH,CRITICAL"
+
+      # Upload SARIF to GitHub Security tab for persistent tracking
+      - name: Upload SARIF results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-iac-results.sarif"

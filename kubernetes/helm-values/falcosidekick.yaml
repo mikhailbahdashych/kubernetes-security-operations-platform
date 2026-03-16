@@ -1,0 +1,61 @@
+# =============================================================================
+# Helm Values: Falcosidekick — Falco Alert Router
+#
+# Chart: falcosecurity/falcosidekick
+# Install command:
+#   helm install falcosidekick falcosecurity/falcosidekick \
+#     -n security-monitoring -f falcosidekick.yaml
+#
+# Falcosidekick receives alerts from Falco (via HTTP on port 2801) and
+# routes them to configured outputs. In this platform, it primarily serves
+# as a Prometheus metrics bridge — converting Falco alerts into the
+# "falcosidekick_inputs_total" metric that powers the Grafana dashboard.
+#
+# Additional outputs (Slack, PagerDuty, Elasticsearch) can be configured
+# via the config section below.
+# =============================================================================
+
+# Single replica is sufficient for dev — Falcosidekick is stateless
+replicaCount: 1
+
+config:
+  # Webhook output — disabled (empty address). Enable by setting a URL
+  # to forward alerts to an external system.
+  webhook:
+    address: ""
+    minimumpriority: "warning"
+
+  # Prometheus integration — Falcosidekick exposes a /metrics endpoint
+  # that Prometheus scrapes via the ServiceMonitor below
+  prometheus:
+    extralabels: ""
+
+# Web UI is disabled to save resources — use Grafana for alert visualization
+webui:
+  enabled: false
+
+# Resource limits for a single-replica deployment
+resources:
+  limits:
+    memory: 128Mi
+    cpu: 100m
+  requests:
+    memory: 64Mi
+    cpu: 50m
+
+# ClusterIP service — Falco pods send alerts to this endpoint
+service:
+  type: ClusterIP
+  port: 2801                         # Falcosidekick's default listening port
+
+# ---------------------------------------------------------------------------
+# Prometheus ServiceMonitor — auto-discovered by the kube-prometheus-stack.
+# Scrapes the falcosidekick_inputs_total metric every 30s, which is used
+# by the "Falco Alerts Over Time" Grafana dashboard panel.
+# ---------------------------------------------------------------------------
+prometheus:
+  serviceMonitor:
+    enabled: true
+    additionalLabels: {}
+    interval: 30s
+    scrapeTimeout: 10s

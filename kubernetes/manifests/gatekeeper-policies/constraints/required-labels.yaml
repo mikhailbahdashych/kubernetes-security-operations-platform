@@ -1,0 +1,34 @@
+# =============================================================================
+# Gatekeeper Constraint: required-labels
+#
+# Activates the K8sRequiredLabels template to enforce organizational labels
+# on Deployments in the "applications" namespace. Targets Deployments (not
+# Pods) because labels should be set at the workload level, not on
+# individual replicas.
+#
+# Required labels:
+#   - "app"         — identifies the application (used by service selectors)
+#   - "team"        — identifies the owning team (used for cost allocation)
+#   - "environment" — identifies the environment (dev, staging, prod)
+#
+# Enforcement: deny — non-compliant Deployments are rejected at admission time.
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: required-labels
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      # Targets Deployments, not Pods — labels flow from Deployment to Pod
+      # template automatically
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces:
+      - applications
+  parameters:
+    labels:
+      - "app"
+      - "team"
+      - "environment"

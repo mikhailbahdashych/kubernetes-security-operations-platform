@@ -1,0 +1,126 @@
+# =============================================================================
+# CI Workflow: Terraform Lint & Security Scan
+#
+# Validates Terraform code quality and scans for security misconfigurations.
+# Runs on pushes and PRs to main that change terraform/ files.
+#
+# Jobs:
+#   1. terraform-fmt      — checks HCL formatting consistency
+#   2. terraform-validate — validates module syntax (per module, in parallel)
+#   3. tfsec              — static security analysis for Terraform
+#   4. checkov            — comprehensive IaC security scanner
+#
+# Both tfsec and Checkov are run because they have different rule databases
+# and catch different issues. tfsec focuses on AWS-specific misconfigs while
+# Checkov covers broader compliance frameworks (CIS, NIST, SOC2).
+# =============================================================================
+name: Terraform Lint & Security Scan
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+
+# Minimal permissions — only needs to read repository contents
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Format check — ensures all .tf files follow the canonical style
+  # Uses `terraform fmt -check` which exits non-zero if files need formatting.
+  # Fix locally with: terraform fmt -recursive terraform/
+  # ---------------------------------------------------------------------------
+  terraform-fmt:
+    name: Terraform Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive -diff terraform/
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Validate — runs `terraform validate` on each module independently.
+  # Uses a matrix strategy to validate all 3 modules in parallel.
+  # init -backend=false skips backend configuration (no AWS creds needed).
+  # ---------------------------------------------------------------------------
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false                  # Continue validating other modules if one fails
+      matrix:
+        module:
+          - terraform/modules/vpc
+          - terraform/modules/eks
+          - terraform/modules/wazuh-server
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+
+      - name: Terraform Init (${{ matrix.module }})
+        run: terraform -chdir=${{ matrix.module }} init -backend=false
+
+      - name: Terraform Validate (${{ matrix.module }})
+        run: terraform -chdir=${{ matrix.module }} validate
+
+  # ---------------------------------------------------------------------------
+  # Job 3: tfsec — Terraform static security scanner by Aqua Security
+  # Checks for AWS-specific security misconfigurations such as:
+  #   - Unencrypted resources (S3, EBS, RDS)
+  #   - Overly permissive security groups
+  #   - Missing logging/monitoring
+  #   - IAM policy issues
+  # soft_fail: false means the workflow fails on any finding.
+  # ---------------------------------------------------------------------------
+  tfsec:
+    name: tfsec Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform/
+          soft_fail: false
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Checkov — comprehensive IaC security and compliance scanner
+  # Checks Terraform against 1000+ policies covering CIS benchmarks,
+  # NIST 800-53, SOC2, HIPAA, and more. Complements tfsec with broader
+  # compliance coverage and graph-based analysis.
+  # ---------------------------------------------------------------------------
+  checkov:
+    name: Checkov IaC Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/
+          framework: terraform
+          quiet: true                   # Suppress passing checks from output
+          soft_fail: false              # Fail the workflow on any finding
+          output_format: cli

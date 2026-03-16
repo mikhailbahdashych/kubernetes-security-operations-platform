@@ -1,0 +1,103 @@
+# =============================================================================
+# CI Workflow: Kubernetes Manifests Lint
+#
+# Validates Kubernetes YAML manifests for correctness and style.
+# Runs on pushes and PRs to main that change kubernetes/ files.
+#
+# Jobs:
+#   1. kubeconform — validates manifests against Kubernetes API schemas.
+#      Catches issues like wrong apiVersion, missing required fields, or
+#      invalid field values BEFORE they reach the cluster.
+#   2. yamllint    — checks YAML formatting and style consistency.
+#
+# Why kubeconform over kubeval? kubeconform is actively maintained, faster,
+# supports CRD schemas, and handles multi-document YAML files.
+# =============================================================================
+name: Kubernetes Manifests Lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "kubernetes/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "kubernetes/**"
+
+# Minimal permissions — only needs to read repository contents
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Kubeconform — Kubernetes schema validation
+  # Validates that manifests are valid against the K8s v1.29 API schema.
+  # --strict rejects unknown fields, --ignore-missing-schemas allows CRDs
+  # (like Gatekeeper ConstraintTemplates) whose schemas are not available.
+  # ---------------------------------------------------------------------------
+  kubeconform:
+    name: Kubeconform Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          KUBECONFORM_VERSION="v0.6.4"
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xzf - -C /usr/local/bin kubeconform
+          kubeconform -v
+
+      - name: Validate Kubernetes manifests
+        run: |
+          echo "Validating manifests in kubernetes/manifests/..."
+          find kubernetes/manifests/ -name '*.yaml' -o -name '*.yml' | \
+            xargs -r kubeconform \
+              -strict \
+              -ignore-missing-schemas \
+              -kubernetes-version 1.29.0 \
+              -summary \
+              -output text
+
+  # ---------------------------------------------------------------------------
+  # Job 2: YAML Lint — style and formatting check
+  # Uses a custom config that relaxes some defaults:
+  #   - line-length: 200 chars (Kubernetes manifests can be verbose)
+  #   - document-start: disabled (not all YAML files need "---" at the top)
+  #   - indent-sequences: whatever (allows both indented and non-indented lists)
+  # ---------------------------------------------------------------------------
+  yamllint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Create yamllint config
+        run: |
+          cat > .yamllint.yml <<'EOF'
+          extends: default
+          rules:
+            line-length:
+              max: 200
+              allow-non-breakable-inline-mappings: true
+            truthy:
+              allowed-values: ['true', 'false', 'yes', 'no']
+            comments:
+              min-spaces-from-content: 1
+            document-start: disable
+            indentation:
+              spaces: 2
+              indent-sequences: whatever
+          EOF
+
+      - name: Run yamllint
+        run: |
+          echo "Linting YAML files in kubernetes/..."
+          find kubernetes/ -name '*.yaml' -o -name '*.yml' | \
+            xargs -r yamllint -c .yamllint.yml

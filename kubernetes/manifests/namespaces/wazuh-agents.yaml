@@ -1,0 +1,22 @@
+# =============================================================================
+# Namespace: wazuh-agents
+#
+# Hosts Wazuh agent DaemonSet pods that collect host-level security data
+# (system logs, file integrity, vulnerability detection) from every node
+# and forward it to the external Wazuh Manager server.
+#
+# Uses "privileged" PSS because agents need:
+#   - runAsUser: 0 (root) for reading host logs
+#   - hostPath volumes for /var/log and /etc/os-release
+#   - Tolerations for control plane nodes
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wazuh-agents
+  labels:
+    name: wazuh-agents
+    purpose: host-intrusion-detection
+    # PSS "privileged" — no restrictions. Required because Wazuh agents
+    # run as root and mount host filesystem paths.
+    pod-security.kubernetes.io/enforce: privileged

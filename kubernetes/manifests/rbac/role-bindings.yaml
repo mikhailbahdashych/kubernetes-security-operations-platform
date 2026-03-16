@@ -1,0 +1,155 @@
+# =============================================================================
+# RBAC — Role Bindings & ClusterRole Bindings
+#
+# Maps IAM groups and ServiceAccounts to the Roles and ClusterRoles defined
+# in cluster-roles.yaml and roles.yaml.
+#
+# Binding structure:
+#   Tier 1: cluster-admins group       -> cluster-admin-role (ClusterRoleBinding)
+#   Tier 2: security-operators group   -> security-operator-role (ClusterRoleBinding)
+#           + security-operator SA     -> security-operator-manage-role in
+#                                         security-monitoring (RoleBinding)
+#           + security-operator SA     -> security-operator-manage-role in
+#                                         security-enforcement (RoleBinding)
+#   Tier 3: app-operators group        -> app-operator-role in applications (RoleBinding)
+#   Tier 4: auditors group             -> auditor-role (ClusterRoleBinding)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Tier 1: Cluster Admin — bound to the "cluster-admins" IAM group
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-admin-binding
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin-role
+subjects:
+  - kind: Group
+    name: cluster-admins
+    apiGroup: rbac.authorization.k8s.io
+---
+# -----------------------------------------------------------------------------
+# Tier 2: Security Operator — cluster-wide read-only access
+# Bound to both the IAM group and the ServiceAccount for programmatic access
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: security-operator-binding
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: security-operator-role
+subjects:
+  # IAM group for human operators
+  - kind: Group
+    name: security-operators
+    apiGroup: rbac.authorization.k8s.io
+  # ServiceAccount for automated security tooling
+  - kind: ServiceAccount
+    name: security-operator
+    namespace: security-monitoring
+---
+# -----------------------------------------------------------------------------
+# Tier 2: Security Operator — CRUD in security-monitoring namespace
+# This RoleBinding adds write permissions in security-monitoring on top of
+# the cluster-wide read-only access granted above.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: security-operator-manage-binding
+  namespace: security-monitoring
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: security-operator-manage-role
+subjects:
+  - kind: Group
+    name: security-operators
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: security-operator
+    namespace: security-monitoring
+---
+# -----------------------------------------------------------------------------
+# Tier 2: Security Operator — CRUD in security-enforcement namespace
+# Allows security operators to manage Gatekeeper resources.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: security-operator-manage-binding
+  namespace: security-enforcement
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: security-operator-manage-role
+subjects:
+  - kind: Group
+    name: security-operators
+    apiGroup: rbac.authorization.k8s.io
+  # ServiceAccount from security-monitoring — allows cross-namespace
+  # management of enforcement policies
+  - kind: ServiceAccount
+    name: security-operator
+    namespace: security-monitoring
+---
+# -----------------------------------------------------------------------------
+# Tier 3: App Operator — CRUD in applications namespace only
+# Scoped to a single namespace with no cluster-wide visibility.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-operator-binding
+  namespace: applications
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: app-operator-role
+subjects:
+  # IAM group for application developers
+  - kind: Group
+    name: app-operators
+    apiGroup: rbac.authorization.k8s.io
+  # ServiceAccount for CI/CD pipelines deploying to the applications namespace
+  - kind: ServiceAccount
+    name: app-operator
+    namespace: applications
+---
+# -----------------------------------------------------------------------------
+# Tier 4: Auditor — cluster-wide read-only access (including Secrets)
+# For compliance and security auditing. No write permissions anywhere.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: auditor-binding
+  labels:
+    app: security-operations
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: auditor-role
+subjects:
+  - kind: Group
+    name: auditors
+    apiGroup: rbac.authorization.k8s.io
+  # ServiceAccount in default namespace for automated audit tools
+  - kind: ServiceAccount
+    name: auditor
+    namespace: default
